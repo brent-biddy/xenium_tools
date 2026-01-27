@@ -10,12 +10,11 @@ arguments <- function(){
 
     parser <- ArgumentParser(description='Create a Seurat object from Xenium data')
     parser$add_argument('--seurat_object', required=TRUE, help='Path to the Xenium data directory')
-    parser$add_argument('--sample_name', required=FALSE, help='Sample name for the Seurat object', default='Xenium_Sample')
     args <- parser$parse_args()
     return(args)    
 }
 
-cluster_seurat <- function(seurat_obj, sample_name = "Xenium_Sample"){
+cluster_seurat <- function(seurat_obj){
     seurat_obj <- NormalizeData(object =seurat_obj)
     seurat_obj <- FindVariableFeatures(object =seurat_obj)
     seurat_obj <- ScaleData(object =seurat_obj)
@@ -35,7 +34,7 @@ main <- function(){
 
     seurat <- cluster_seurat(seurat)
 
-    saveRDS(seurat, "test_cluster_seurat.RDS")
+    saveRDS(seurat, "seurat_clusters.RDS")
 }
 
 main()

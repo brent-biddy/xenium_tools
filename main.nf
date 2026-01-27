@@ -1,27 +1,5 @@
 // main.nf
 
-process build_seurat_sif {
-    
-    tag "build_seurat_sif"
-
-    input:
-    path seurat_def
-
-    output:
-    path "seurat.sif"
-
-    publishDir "${projectDir}/envs/images", mode: 'copy'
-
-    script:
-    """
-    singularity build --fakeroot seurat.sif ${seurat_def}
-    """
-    stub:
-    """
-    touch seurat.sif
-    """
-}
-
 process create_seurat_object {
     
     tag "${sample_name}"
@@ -34,10 +12,11 @@ process create_seurat_object {
     tuple val(sample_name), path(xenium_output_path), val(downsample)
     
     output:
-    tuple val(sample_name), path("seurat_object.RDS")
-    tuple val(sample_name), path("seurat_object_downsampled.RDS"), optional: true
+    tuple val(sample_name), path("seurat_object.RDS"), emit: "full_rds"
+    tuple val(sample_name), path("seurat_object_downsampled.RDS"), emit: "small_rds", optional: true
     
-    publishDir "results/${sample_name}", mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_object.RDS", saveAs: { "${sample_name}_seurat.RDS" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_object_downsampled.RDS", saveAs: { "${sample_name}_seurat_downsampled.RDS" }, mode: 'copy'
 
     script:
     def downsample = downsample ? "--downsample" : ""
@@ -65,35 +44,33 @@ process cluster_seurat {
     tuple val(sample_name), path(seurat_obj)
     
     output:
-    tuple val(sample_name), path("test_seurat_cluster.RDS")
+    tuple val(sample_name), path("seurat_clusters.RDS")
     
-    publishDir "results/${sample_name}", mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.RDS", saveAs: { "${sample_name}_seurat_clustered.RDS" }, mode: 'copy'
 
     script:
     """
-    cluster_seurat_xenium.R --seurat_object ${seurat_obj} --sample_name ${sample_name}
+    cluster_seurat_xenium.R --seurat_object ${seurat_obj}
     """
     stub:
     """
-    touch test_cluster_seurat.RDS
+    touch seurat_clusters.RDS
     """
 }
 
 // Workflow block
 workflow {
 
-    if (params.build_seurat) {
-        Channel.fromPath("${projectDir}/envs/seurat.def") |
-        set{ seurat_def }
-        build_seurat_sif(seurat_def)
-    } else {
+    Channel.fromPath(params.samplesheet) |
+    splitCsv(header:true) |
+    map{ row -> tuple(row.sample, file(row.path), params.downsample) } |
+    set{sample_info}
 
-        Channel.fromPath(params.samplesheet) |
-        splitCsv(header:true) |
-        map{ row -> tuple(row.sample, file(row.path), params.downsample) } |
-        set{sample_info}
-        sample_info.dump(tag: "sample_info")
+    sample_info.dump(tag: "sample_info")
+    
+    create_seurat_object(sample_info)
 
-        create_seurat_object(sample_info)
+    if (params.cluster) {
+        cluster_seurat(create_seurat_object.out.full_rds)
     }
 }

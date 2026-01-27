@@ -2,5 +2,6 @@ Bootstrap: docker
 From: bioconductor/bioconductor_docker:3.21
 
 %post
-    R -e "install.packages('BiocManager')"
+    R -e "install.packages(c('BiocManager', 'remotes'))"
+    R -e "remotes::install_version(package = 'arrow', version = '21.0.0', upgrade = 'never')"
     R -e "BiocManager::install(c('Seurat', 'SeuratObject', 'Signac', 'patchwork', 'data.table', 'dplyr', 'argparse', 'R.utils'), update = FALSE)"
