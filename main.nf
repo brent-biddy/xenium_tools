@@ -4,10 +4,6 @@ process create_seurat_object {
     
     tag "${sample_name}"
 
-    container {workflow.containerEngine == 'singularity' ? // If using Singularity
-                "${projectDir}/envs/images/seurat.sif" : //Then container to use is this line.
-                "babiddy755/xenium_tools_seurat:latest"}// Else, container to use is this line.
-
     input:
     tuple val(sample_name), path(xenium_output_path), val(downsample)
     
@@ -36,17 +32,16 @@ process cluster_seurat {
     
     tag "${sample_name}"
 
-    container {workflow.containerEngine == 'singularity' ? // If using Singularity
-                "${projectDir}/envs/images/seurat.sif" : //Then container to use is this line.
-                "babiddy755/xenium_tools_seurat:latest"}// Else, container to use is this line.
-
     input:
     tuple val(sample_name), path(seurat_obj)
     
     output:
     tuple val(sample_name), path("seurat_clusters.RDS")
+    tuple val(sample_name), path("seurat_clusters.csv")
     
     publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.RDS", saveAs: { "${sample_name}_seurat_clustered.RDS" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.csv", saveAs: { "${sample_name}_seurat_clustered.csv" }, mode: 'copy'
+
 
     script:
     """

@@ -34,6 +34,10 @@ main <- function(){
 
     seurat <- cluster_seurat(seurat)
 
+    cluster_df <- seurat[[c("cell_id", "seurat_clusters")]]
+
+    write.csv(cluster_df, "seurat_clusters.csv", row.names = FALSE, quote = FALSE)
+
     saveRDS(seurat, "seurat_clusters.RDS")
 }
 
