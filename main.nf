@@ -34,8 +34,8 @@ process create_seurat_object {
     tuple val(sample_name), path(xenium_output_path), val(downsample)
     
     output:
-    path "seurat_object.RDS"
-    path "seurat_object_downsampled.RDS", optional: true
+    tuple val(sample_name), path("seurat_object.RDS")
+    tuple val(sample_name), path("seurat_object_downsampled.RDS"), optional: true
     
     publishDir "results/${sample_name}", mode: 'copy'
 
@@ -50,6 +50,32 @@ process create_seurat_object {
     if [[ $params.downsample ]]; then
         touch seurat_object_downsampled.RDS
     fi
+    """
+}
+
+process cluster_seurat {
+    
+    tag "${sample_name}"
+
+    container {workflow.containerEngine == 'singularity' ? // If using Singularity
+                "${projectDir}/envs/images/seurat.sif" : //Then container to use is this line.
+                "babiddy755/xenium_tools_seurat:latest"}// Else, container to use is this line.
+
+    input:
+    tuple val(sample_name), path(seurat_obj)
+    
+    output:
+    tuple val(sample_name), path("test_seurat_cluster.RDS")
+    
+    publishDir "results/${sample_name}", mode: 'copy'
+
+    script:
+    """
+    cluster_seurat_xenium.R --seurat_object ${seurat_obj} --sample_name ${sample_name}
+    """
+    stub:
+    """
+    touch test_cluster_seurat.RDS
     """
 }
 
