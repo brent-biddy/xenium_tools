@@ -21,6 +21,7 @@ create_seurat_xenium <- function(data_dir, sample_name = "Xenium_Sample"){
     # output_file <- file.path(data_dir, paste0(sample_name, "_seurat.RDS"))
     output_file <- paste0(sample_name, "_seurat.RDS")
     cluster_file <- file.path(data_dir, "analysis", "clustering", "gene_expression_graphclust", "clusters.csv")
+    umap_file <- file.path(data_dir, "analysis", "umap", "gene_expression_2_components", "projection.csv")
     cell_meta_file <- file.path(data_dir, "cells.csv.gz")
 
     print(paste("Creating Seurat object from Xenium data in: ", data_dir))
@@ -44,6 +45,14 @@ create_seurat_xenium <- function(data_dir, sample_name = "Xenium_Sample"){
         print(paste0("Meta data from the following file will be used: ", cell_meta_file))
         cell_meta_dat <- fread(cell_meta_file, data.table=FALSE, colClasses = c("cell_id"="character"))
         seurat_obj[[]] <- left_join(seurat_obj[[]][, !(colnames(seurat_obj[[]]) %in% c("segmentation_method"))], cell_meta_dat, by="cell_id")
+    }
+
+    if(file.exists(umap_file)){
+        print("UMAP Projection found. Adding UMAP Projection to Seurat Object.")
+        print(paste0("Projection from the following file will be used: ", umap_file))
+        umap_dat <- fread(umap_file, col.names = c("Barcode", "UMAP_1", "UMAP_2"), data.table=FALSE)
+        row.names(umap_dat) <- umap_dat[["Barcode"]]
+        seurat_obj@reductions$xenium_umap <- SeuratObject::CreateDimReducObject(embeddings = as.matrix(umap_dat[c("UMAP_1", "UMAP_2")]), key = "UMAP_", assay = "Xenium")
     }
     
     if( file.exists(output_file) ){
