@@ -90,7 +90,7 @@ workflow {
     }
 
     if (params.notebook) {
-        notebook = file("${projectDir}/notebooks/test.ipynb")
+        notebook = file("${projectDir}/notebooks/qc_plots.ipynb")
         run_notebook(notebook, create_seurat_object.out.full_rds)
     }
 }
