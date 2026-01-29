@@ -36,7 +36,7 @@ create_seurat_xenium <- function(data_dir, sample_name = "Xenium_Sample"){
     if(file.exists(cluster_file)){
         print("Clustering data found. Adding Clustering Data to Seurat object.")
         print(paste0("Cluster data from the following file will be used: ", cluster_file))
-        cluster_dat <- fread(cluster_file, data.table=FALSE, col.names=c("cell_id", "cluster_id"), colClasses=c("character", "integer"))
+        cluster_dat <- fread(cluster_file, data.table=FALSE, col.names=c("cell_id", "xenium_clusters"), colClasses=c("character", "integer"))
         seurat_obj[[]] <- left_join(seurat_obj[[]], cluster_dat, by="cell_id")
     }
 
@@ -61,7 +61,7 @@ create_seurat_xenium <- function(data_dir, sample_name = "Xenium_Sample"){
     }
 
     # Save Seurat object
-    Idents(seurat_obj) <- "cluster_id"
+    Idents(seurat_obj) <- "xenium_clusters"
     saveRDS(seurat_obj, file = "seurat_object.RDS")
     return(seurat_obj)
 }
