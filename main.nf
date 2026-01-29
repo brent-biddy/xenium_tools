@@ -5,7 +5,8 @@ process create_seurat_object {
     tag "${sample_name}"
 
     input:
-    tuple val(sample_name), path(xenium_output_path), val(downsample)
+    tuple val(sample_name), path(xenium_output_path)
+    val(downsample)
     
     output:
     tuple val(sample_name), path("seurat_object.RDS"), emit: "full_rds"
@@ -75,18 +76,21 @@ process run_notebook {
 // Workflow block
 workflow {
 
-    Channel.fromPath(params.samplesheet) |
-    splitCsv(header:true) |
-    map{ row -> tuple(row.sample, file(row.path), params.downsample) } |
-    set{sample_info}
+    Channel.fromPath(params.samplesheet)
+        .splitCsv(header:true)
+        .map{ row -> tuple(row.sample, file(row.path)) }
+        .set{sample_info}
 
     sample_info.dump(tag: "sample_info")
-    
-    create_seurat_object(sample_info)
+
+    create_seurat_object(sample_info, params.downsample)
 
     if (params.cluster) {
         cluster_seurat(create_seurat_object.out.full_rds)
+    }
+
+    if (params.notebook) {
         notebook = file("${projectDir}/notebooks/test.ipynb")
-        run_notebook(notebook, cluster_seurat.out.rds)
+        run_notebook(notebook, create_seurat_object.out.full_rds)
     }
 }
