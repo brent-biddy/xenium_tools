@@ -1,5 +1,8 @@
 // main.nf
 
+include { SEURAT as SEURAT_RDS } from "${projectDir}/modules/seurat.nf"
+include { SEURAT as SEURAT_DIR } from "${projectDir}/modules/seurat.nf"
+
 process create_seurat_object {
     
     tag "${sample_name}"
@@ -29,48 +32,13 @@ process create_seurat_object {
     """
 }
 
-process cluster_seurat {
-    
-    tag "${sample_name}"
 
-    input:
-    tuple val(sample_name), path(seurat_obj)
-    
-    output:
-    tuple val(sample_name), path("seurat_clusters.RDS"), emit: rds
-    tuple val(sample_name), path("seurat_clusters.csv"), emit: csv
-    
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.RDS", saveAs: { "${sample_name}_seurat_clustered.RDS" }, mode: 'copy'
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.csv", saveAs: { "${sample_name}_seurat_clustered.csv" }, mode: 'copy'
-
-
-    script:
-    """
-    cluster_seurat_xenium.R --seurat_object ${seurat_obj} --executor ${task.executor}
-    """
-    stub:
-    """
-    touch seurat_clusters.RDS
-    """
-}
-
-process run_notebook {
-
-    tag "${sample_name}"
-
-    input:
-    path (notebook_path)
-    tuple val(sample_name), path(seurat_rds)
-
-    output:
-    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
-
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_plots.html" }, mode: 'copy'
-
-    script:
-    """
-    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
-    """
+workflow OBJECT_CREATION {
+    take:
+        sample_info
+    main:
+        create_seurat_object(sample_info, params.downsample)
+        SEURAT_DIR(create_seurat_object.out.full_rds)
 }
 
 // Workflow block
@@ -79,18 +47,18 @@ workflow {
     Channel.fromPath(params.samplesheet)
         .splitCsv(header:true)
         .map{ row -> tuple(row.sample, file(row.path)) }
+        .branch{
+            seurat: it[1].getExtension() == "RDS"
+            anndata: it[1].getExtension() == "h5ad"
+            dir: it[1].isDirectory()
+        }
         .set{sample_info}
 
-    sample_info.dump(tag: "sample_info")
+    sample_info.seurat.dump(tag: "seurat_input")
+    sample_info.anndata.dump(tag: "anndata_input")
+    sample_info.dir.dump(tag: "dir_input")
 
-    create_seurat_object(sample_info, params.downsample)
+    OBJECT_CREATION(sample_info.dir)
+    SEURAT_RDS(sample_info.seurat)
 
-    if (params.cluster) {
-        cluster_seurat(create_seurat_object.out.full_rds)
-    }
-
-    if (params.notebook) {
-        notebook = file("${projectDir}/notebooks/qc_plots.ipynb")
-        run_notebook(notebook, create_seurat_object.out.full_rds)
-    }
 }
