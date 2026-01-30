@@ -46,7 +46,7 @@ process cluster_seurat {
 
     script:
     """
-    cluster_seurat_xenium.R --seurat_object ${seurat_obj}
+    cluster_seurat_xenium.R --seurat_object ${seurat_obj} --executor ${task.executor}
     """
     stub:
     """
