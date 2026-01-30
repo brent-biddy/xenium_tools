@@ -46,7 +46,7 @@ main <- function(){
         print(plan())
     } else if (args$executor == 'slurm') {
         options(future.globals.maxSize = 2e9)
-        plan(multicore, workers = availableCores(omit = 1))
+        plan(multicore, workers = availableCores(omit = 1, methods = 'Slurm'))
         print(plan())
     }
     
