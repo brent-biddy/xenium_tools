@@ -24,7 +24,7 @@ process cluster_seurat {
     """
 }
 
-process run_notebook {
+process seurat_cluster_plots {
 
     tag "${sample_name}"
 
@@ -50,10 +50,7 @@ workflow SEURAT {
     main:
         if(params.cluster){
             cluster_seurat(seurat_rds)
-        }
-        
-        if (params.notebook) {
-            notebook = file("${projectDir}/notebooks/qc_plots.ipynb")
-            run_notebook(notebook, cluster_seurat.out.rds)
+            notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
+            seurat_cluster_plots(notebook, cluster_seurat.out.rds)
         }
 }
