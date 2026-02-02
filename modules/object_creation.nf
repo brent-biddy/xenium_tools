@@ -8,8 +8,7 @@ process create_seurat_object {
 
     input:
     tuple val(sample_name), path(xenium_output_path)
-    val(downsample)
-    
+
     output:
     tuple val(sample_name), path("seurat_object.RDS"), emit: "full_rds"
     tuple val(sample_name), path("seurat_object_downsampled.RDS"), emit: "small_rds", optional: true
@@ -18,14 +17,15 @@ process create_seurat_object {
     publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_object_downsampled.RDS", saveAs: { "${sample_name}_seurat_downsampled.RDS" }, mode: 'copy'
 
     script:
-    def downsample = downsample ? "--downsample" : ""
+    def downsample_flag = ${params.downsample} ? "--downsample" : ""
     """
-    create_seurat_xenium.R --data_dir ${xenium_output_path} --sample_name ${sample_name} ${downsample}
+    create_seurat_xenium.R --data_dir ${xenium_output_path} --sample_name ${sample_name} ${downsample_flag}
     """
+
     stub:
     """
     touch seurat_object.RDS
-    if [[ $params.downsample ]]; then
+    if [[ "${params.downsample}" == "true" ]]; then
         touch seurat_object_downsampled.RDS
     fi
     """
@@ -48,6 +48,10 @@ process xenium_qc_plots {
     """
     jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
     """
+    stub:
+    """
+    touch jupyter_notebook.html
+    """
 }
 
 
@@ -56,7 +60,7 @@ workflow OBJECT_CREATION {
         sample_info
     main:
         
-        create_seurat_object(sample_info, params.downsample)
+        create_seurat_object(sample_info)
 
         notebook_file = file("${projectDir}/notebooks/xenium_qc_plots.ipynb")
         xenium_qc_plots(notebook_file, create_seurat_object.out.full_rds)

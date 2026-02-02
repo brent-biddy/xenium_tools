@@ -41,6 +41,10 @@ process seurat_cluster_plots {
     """
     jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
     """
+    stub:
+    """
+    touch jupyter_notebook.html
+    """
 }
 
 process sketch_cluster_seurat {
