@@ -9,8 +9,8 @@ process cluster_seurat {
     tuple val(sample_name), path("seurat_clusters.RDS"), emit: rds
     tuple val(sample_name), path("seurat_clusters.csv"), emit: csv
     
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.RDS", saveAs: { "${sample_name}_seurat_clustered.RDS" }, mode: 'copy'
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.csv", saveAs: { "${sample_name}_seurat_clustered.csv" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.RDS", saveAs: { "${sample_name}_seurat_clusters.RDS" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_clusters.csv", saveAs: { "${sample_name}_seurat_clusters.csv" }, mode: 'copy'
 
 
     script:
@@ -35,7 +35,7 @@ process seurat_cluster_plots {
     output:
     tuple val(sample_name), path("jupyter_notebook.html"), emit: html
 
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_plots.html" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_seurat_cluster_report.html" }, mode: 'copy'
 
     script:
     """
