@@ -43,11 +43,38 @@ process seurat_cluster_plots {
     """
 }
 
+process sketch_cluster_seurat {
+    
+    tag "${sample_name}"
+
+    input:
+    tuple val(sample_name), path(seurat_obj)
+    
+    output:
+    tuple val(sample_name), path("test_sketch_and_cluster_seurat.RDS"), emit: rds
+    tuple val(sample_name), path("test_sketch_and_cluster_seurat_clusters.csv"), emit: csv
+    
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "test_sketch_and_cluster_seurat.RDS", saveAs: { "${sample_name}_seurat_sketch_clusters.RDS" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "test_sketch_and_cluster_seurat_clusters.csv", saveAs: { "${sample_name}_seurat_sketch_clusters.csv" }, mode: 'copy'
+
+
+    script:
+    """
+    sketch_cluster_xenium.R --seurat_object ${seurat_obj}
+    """
+    stub:
+    """
+    touch test_sketch_and_cluster_seurat.RDS
+    touch test_sketch_and_cluster_seurat_clusters.csv
+    """
+}
+
 workflow SEURAT {
     take:
         seurat_rds
 
     main:
+        sketch_cluster_seurat(seurat_rds)
         if(params.cluster){
             cluster_seurat(seurat_rds)
             notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
