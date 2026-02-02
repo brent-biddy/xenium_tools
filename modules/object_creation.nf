@@ -17,7 +17,7 @@ process create_seurat_object {
     publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_object_downsampled.RDS", saveAs: { "${sample_name}_seurat_downsampled.RDS" }, mode: 'copy'
 
     script:
-    def downsample_flag = ${params.downsample} ? "--downsample" : ""
+    def downsample_flag = params.downsample == "true" ? "--downsample" : ""
     """
     create_seurat_xenium.R --data_dir ${xenium_output_path} --sample_name ${sample_name} ${downsample_flag}
     """
