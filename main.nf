@@ -33,3 +33,22 @@ workflow {
     SEURAT_RDS(sample_info.seurat)
 
 }
+
+workflow.onComplete {
+    println """
+    Pipeline execution summary
+    ---------------------------
+    Completed at : ${workflow.complete}
+    Duration     : ${workflow.duration}
+    Success      : ${workflow.success}
+    Work Dir     : ${workflow.workDir}
+    Results Dir  : ${params.output_path}
+    Exit status  : ${workflow.exitStatus}
+    Error report : ${workflow.errorReport ?: '-'}
+    """.stripIndent()
+}
+
+workflow.onError {
+    println "Oops... Pipeline execution stopped with the following message: ${workflow.errorMessage}"
+}
+
