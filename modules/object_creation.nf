@@ -42,7 +42,7 @@ process xenium_qc_plots {
     output:
     tuple val(sample_name), path("jupyter_notebook.html"), emit: html
 
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_plots.html" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_xenium_qc_report.html" }, mode: 'copy'
 
     script:
     """
