@@ -17,7 +17,12 @@ workflow {
 
     Channel.fromPath(params.samplesheet)
         .splitCsv(header:true)
-        .map{ row -> tuple(row.sample, file(row.path)) }
+        .map{ row -> 
+            if (!row.sample || !row.path) { 
+                error "ERROR: Samplesheet must have 'sample' and 'path' columns"
+            }
+            tuple(row.sample, file(row.path)) 
+        }
         .branch{
             seurat: it[1].getExtension() == "RDS"
             anndata: it[1].getExtension() == "h5ad"
