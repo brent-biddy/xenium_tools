@@ -115,7 +115,7 @@ main <- function(){
 
     args <- arguments()
     
-    seurat <- create_seurat_xenium(data_dir = args$data_dir, sample_name = args$sample_name)
+    seurat <- create_seurat_xenium(data_dir = args$data_dir, sample_name = args$sample_name, downsample = args$downsample)
 }
 
 main()
