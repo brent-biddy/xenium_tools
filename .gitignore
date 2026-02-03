@@ -1,3 +1,7 @@
 #ignore envs image directory
 envs/images/
 *.csv
+work/
+results/
+.nextflow.log*
+.nextflow/

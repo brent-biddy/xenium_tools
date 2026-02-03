@@ -1,0 +1,35 @@
+tissue: "Fallopian Tube"
+description: "Marker genes for cell types in the Fallopian tube."
+
+cell_types:
+  dual_feature_fallopian_tube_progenitor_cell:
+    cl_id: 4052070
+    markers:
+      mouse: []
+      human: [EPCAM, PECAM1]
+  fallopian_tube_multiciliated_epithelial_cell:
+    cl_id: 4030007
+    markers: 
+      mouse: [Ccdc153, Dnah5, Foxj1, Tubb4b]
+      human: [CAPS, CATIP, DNAH5, FOXJ1, TUBB4B]
+  fallopian_tube_non_ciliated_epithelial_cell:
+    cl_id: 4052019
+    markers: 
+      mouse: [Wnt7a]
+      human: []
+  fallopian_tube_secretory_epithelial_cell:
+    cl_id: 4030006
+    markers:
+      mouse: [Krt7, Ovgp1, Pax8]
+      human: [KRT7, MUC1, OVGP1, PAX8]
+  fallopian_tube_smooth_muscle_cell:
+    cl_id: 4052022
+    markers: 
+      mouse: [Myh11]
+      human: [DES]
+  peg_cell:
+    cl_id: 4033014
+    markers: 
+      mouse: []
+      human: [CD44, ITGA6]
+      

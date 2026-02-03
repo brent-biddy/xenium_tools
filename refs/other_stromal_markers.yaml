@@ -1,0 +1,77 @@
+tissue: "Other Stromal Cell Types"
+description: "Marker genes for cell types in the human ovary."
+
+cell_types:
+  fibroblast:
+    cl_id: 0000057
+    organ:
+      ovary:
+        mouse: []
+        human: [BNC2, CCL2, CFD, CXCL1, CXCL9, DCN, ENPP2, IGFBP5, IL24, LUM, PDGFRA, RAMP1, VIM]
+      fallopian_tube:
+        mouse: [Col1a1, Dcn, Pdgfra]
+        human: [COL1A1, DCN, PDGFRA]
+      uterus:
+        mouse: []
+        human: [C7, CFH, CTSK, OGN]
+  mesenchymal_stem_cell:
+    cl_id: 0000134
+    organ:
+      ovary:
+        mouse: []
+        human: [GATA2, NR2F1, TCF21]
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  neuron:
+    cl_id: 0000540
+    organ:
+      ovary:
+        mouse: []
+        human: [CDH19, NRXN1]
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  pericyte:
+    cl_id: 0000669
+    organ:
+      ovary:
+        mouse: []
+        human: [NOTCH3, PDGFRB]
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  perivascular_cell:
+    cl_id: 4033054
+    organ:
+      ovary:
+        mouse: []
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [ACTA2, FHL5, GUCY1A2, MYH11, NTRK2, RGS5, STEAP4]
+  smooth_muscle_cell:
+    cl_id: 0000192
+    organ:
+      ovary:
+        mouse: [Myh11]
+        human: [ACTA2, CDC42EP3, ESR1, JAZF1, LITAF, LONRF2, NRIP1, PAWR, PLAT, PRLR, RAMP1, RGS5, TAGLN]
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  
