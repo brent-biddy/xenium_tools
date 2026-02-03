@@ -78,8 +78,11 @@ workflow SEURAT {
         seurat_rds
 
     main:
-        sketch_cluster_seurat(seurat_rds)
         if(params.cluster){
+            sketch_cluster_seurat(seurat_rds)
+        }
+        
+        if(params.cluster_full){
             cluster_seurat(seurat_rds)
             notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
             seurat_cluster_plots(notebook, cluster_seurat.out.rds)
