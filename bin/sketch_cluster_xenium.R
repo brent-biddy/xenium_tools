@@ -37,6 +37,7 @@ main <- function(){
     library(Seurat, quietly=TRUE)
     library(data.table, quietly=TRUE)
     library(dplyr, quietly=TRUE)
+    options(future.globals.maxSize = 2e9)
     
     seurat <- readRDS(args$seurat_object)
 
