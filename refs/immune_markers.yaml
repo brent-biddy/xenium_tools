@@ -1,0 +1,283 @@
+tissue: "Immune Cell Types"
+description: "Marker genes for cell types in the human ovary."
+
+cell_types:
+  b_cell:
+    cl_id: 0000236
+    organ:
+      ovary:
+        mouse: [Cd19, Cd79a, Ptprc]
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: [CD79A]
+      uterus:
+        mouse: []
+        human: [CCL5, CD69, CXCR4, MS4A1]
+  cd4_positive_alpha_beta_t_cell:
+    cl_id: 0000624
+    organ:
+      ovary:
+        mouse: []
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: [CD3E]
+      uterus:
+        mouse: []
+        human: []
+  cd8_positive_alpha_beta_regulatory_t_cell:
+    cl_id: 0000795
+    organ:
+      ovary:
+        mouse: [Cd8b1]
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  cd8_positive_alpha_beta_t_cell:
+    cl_id: 0000625
+    organ:
+      ovary:
+        mouse: []
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: [CD3E]
+      uterus:
+        mouse: []
+        human: []
+  dendritic_cell:
+    cl_id: 0002139
+    organ:
+      ovary:
+        mouse: [Clec10a, Clec9a, Fscn1, Itgax]
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: [LYZ]
+      uterus:
+        mouse: []
+        human: [CD68, IL1B]
+  double_negative_t_regulatory_cell:
+    cl_id: 1000414
+    organ:
+      ovary:
+        mouse: 
+          positive: [Cd3e, Il7r, Tcrgc2, Tmem176b]
+          negative: [Cd4]
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [CCL15, EGR1, FOSB, ICAM1, KLF4, POSTN, SELE, SELP, TNFRSF1A, VCAM1]
+  effector_cd4_positive_alpha_beta_t_cell:
+    cl_id: 0002138
+    organ:
+      ovary:
+        mouse: [Cd28, Cd4]
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  eosinophil:
+    cl_id: 0000771
+    organ:
+      ovary:
+        mouse: [S100a8, S100a9]
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  group_2_innate_lymphoid_cell:
+    cl_id: 0001069
+    organ:
+      ovary:
+        mouse: [Il17rb]
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  group_3_innate_lymphoid_cell:
+    cl_id: 0001071
+    organ:
+      ovary:
+        mouse: [Tmem176b]
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+  innate_lymphoid_cell:
+    cl_id: 0001065
+    organ:
+      ovary:
+        mouse: []
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [CCL5, CD69, CXCR4, IL7R, KIT, SPINK2]
+  leukocyte:
+    cl_id: 0000738
+    organ:
+      ovary:
+        mouse: [Ptprc]
+        human: [C1QA, CCL3, CCL4, CCL5, CD69, HCST, IL8, NKG7, RGS1, TYROBP]
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: []
+    lymphocyte:
+      cl_id: 0000542
+      organ:
+        ovary:
+          mouse: []
+          human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [NCAM1, PTPRC]
+    macrophage:
+      cl_id: 0000235
+      organ:
+        ovary:
+          mouse: [Adgre1, F4/80, Cd68, Csf1r, Itgam, Ly6c2, Mrc1]
+          human: [AKAP13, CD14, CD68, DPYD, FKBP5, FOLR2, KANSL1]
+        fallopian_tube:
+          mouse: []
+          human: [LYZ]
+        uterus:
+          mouse: []
+          human: [CD14, CD68, CSF1R, IL1B, SEPP1]
+    mast_cell:
+      cl_id: 0000097
+      organ:
+        ovary:
+          mouse: []
+          human: []
+        fallopian_tube:
+          mouse: []
+          human: [TPSAB1]
+        uterus:
+          mouse: []
+          human: [CD69, CSF1, KIT, MS4A2]
+    mature_nk_t_cell:
+      cl_id: 0000814
+      organ:
+        ovary:
+          mouse: [Ly6c2]
+          human: []
+        fallopian_tube:
+          mouse: []
+          human: []
+        uterus:
+          mouse: []
+          human: []
+    memory_t_cell:
+      cl_id: 0000813
+      organ:
+        ovary:
+          mouse: []
+          human: []
+        fallopian_tube:
+          mouse: []
+          human: []
+        uterus:
+          mouse: []
+          human: [CD69, MUC5B, RUNX3, SAA1, TFF3]
+    monocyte:
+      cl_id: 0000576
+      organ:
+        ovary:
+          mouse: [Ccr2, Treml4]
+          human: []
+        fallopian_tube:
+          mouse: []
+          human: [LYZ]
+        uterus:
+          mouse: []
+          human: []
+    natural_killer_cell:
+      cl_id: 0000623
+      organ:
+        ovary:
+          mouse: [Klrb1c, Ly6c2]
+          human: []
+        fallopian_tube:
+          mouse: []
+          human: [KLRC1]
+        uterus:
+          mouse: []
+          human: []
+    neutrophil:
+      cl_id: 0000775
+      organ:
+        ovary:
+          mouse: [S100a8, S100a9]
+          human: []
+        fallopian_tube:
+          mouse: []
+          human: []
+        uterus:
+          mouse: []
+          human: []
+    plasma_cell:
+      cl_id: 0000786
+      organ:
+        ovary:
+          mouse: []
+          human: []
+        fallopian_tube:
+          mouse: []
+          human: [JCHAIN]
+        uterus:
+          mouse: []
+          human: []
+    t_cell:
+      cl_id: 0000084
+      organ:
+        ovary:
+          mouse: [Cd3e, Ptprc]
+          human: [CD3E, CD3G]
+        fallopian_tube:
+          mouse: []
+          human: []
+        uterus:
+          mouse: []
+          human: [CCL5, CD3G, CD69, CXCR4, HMGB2, IL7R]
+    tissue_resident_macrophage:
+      cl_id: 0000864
+      organ:
+        ovary:
+          mouse: []
+          human: [LYVE1, MAF, NRP1]
+        fallopian_tube:
+          mouse: []
+          human: []
+        uterus:
+          mouse: []
+          human: []
+        

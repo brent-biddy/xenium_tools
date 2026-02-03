@@ -1,0 +1,39 @@
+tissue: "Uterus"
+description: "Marker genes for cell types in the Uterus."
+
+cell_types:
+  endometrial_ciliated_epithelial_cell:
+    cl_id: 4030040
+    markers:
+      mouse: []
+      human: [CAPS, CCNO, CDC20B, EPCAM, FOXJ1, IGF1, MUC12, PCOLCE, PIFO, TPPP3]
+  epithelial_cell_of_the_uterus:
+    cl_id: 0002149
+    markers: 
+      mouse: []
+      human: [EPCAM, HOXA10, KRT5, MEF2C, MMP7, SOX9, TAGLN, TWIST2, VIM, ZEB1]
+  glandular_cell_of_endometrium:
+    cl_id: 0002656
+    markers: 
+      mouse: []
+      human: [ABCG1, CBR3, CXCL8, DENND2C, DKK1, DPP4, EMID1, EPCAM, FOXA2, GPX3, HPRT1, IHH, KMO, LMO7, MMP26, MUC16, OPRK1, PAEP, PAX8, PHLDA1, PIMKLB, S100P, SCGB2A2, SLC7A11, SOX5, SOX9, SUFU, TSPAN8]
+  luminal_epithelial_cell_of_endometrium:
+    cl_id: 4052050
+    markers:
+      mouse: []
+      human: [CLDN22, EPCAM, LCN2, LEFTY1, LGR5, LPAR3, PTGS1, SAA1, SOX9, SULT1E1, WNT7A]
+  stromal_cell_of_endometrium:
+    cl_id: 0002255
+    markers: 
+      mouse: []
+      human: [ALDH1A, ATP5L, CD24, CD3E, CD73, CDH5, CDKN1A, CRABP2, CTGF, DEPP1, FOXC1, FOXL2, FOXO1, GNLY, HAND2, HLA-A, HLA-C, HOPX, IGF1, IGFBP1, INHBA, INSR, MCAM, MMP10, MMP11, MYH11, OGN, PCOLCE, PDGFRB, PECAM1, PRKCDBP, PTPRC, RUNX3, STEAP4, SUSD2, THBD, TNFSF10, VWF, WNT4]
+  uterine_natural_killer_cell:
+    cl_id: 4052028
+    markers: 
+      mouse: []
+      human: [CCL5, CD69, HMGB2, NCAM1]
+  uterine_smooth_muscle_cell:
+    cl_id: 0002601
+    markers:
+      mouse: []
+      human: [ACTA2, ACTG2, DES, LEFTY2, MYH11]

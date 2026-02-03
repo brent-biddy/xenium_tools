@@ -1,0 +1,88 @@
+tissue: "Endothelial Cell Types"
+description: "Marker genes for cell types in the human ovary."
+
+cell_types:
+  capillary_endothelial_cell:
+    cl_id: 0002144
+    organ:
+      ovary:
+        mouse: []
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [ACTA2, CD44, COL1A1, COL1A2, CXCR4, EDNRB, ESM1, ESR1, KDR, MKI67, MYH11, PGR, PLVAP, STEAP4, ZEB2]
+  endothelial_cell:
+    cl_id: 0000115
+    organ:
+      ovary:
+        mouse: []
+        human: [CD34, CDH5, EMCN, FLI1, FLT1, NES, NUAK1, PALMD, PECAM1, PIK3R3, PODXL]
+      fallopian_tube:
+        mouse: []
+        human: [CLDN5]
+      uterus:
+        mouse: []
+        human: []
+  endothelial_cell_of_artery:
+    cl_id: 1000413
+    organ:
+      ovary:
+        mouse: []
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [BMX, EFNB2, GJA4, GJA5, MECOM, SEMA3G]
+  endothelial_cell_of_high_endothelial_venule:
+    cl_id: 0002652
+    organ:
+      ovary:
+        mouse: []
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [ICAM1, IL10, TIMP1, WNT5A]
+  endothelial_cell_of_vascular_tree:
+    cl_id: 0002139
+    organ:
+      ovary:
+        mouse: []
+        human: [APOD, CLDN5, CLEC14A, CTGF, EGFL7, EPAS1, GNG11, LIFR, MEF2C, RAMP2, RBP7, SLC9A3R2, TXNIP, VWF]
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [ACKR1, CD34, SEMA3G]
+  endothelial_cell_of_venule:
+    cl_id: 1000414
+    organ:
+      ovary:
+        mouse: []
+        human: []
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [CCL15, EGR1, FOSB, ICAM1, KLF4, POSTN, SELE, SELP, TNFRSF1A, VCAM1]
+  lymphatic_endothelial_cell:
+    cl_id: 0002138
+    organ:
+      ovary:
+        mouse: []
+        human: [ANGPT2, APOD, FABP5, JMJD1C, LIMS1, LMO2, LOX, MMRN1, PPFIBP1, PTX3, RAB11A, SEMA3A, SMAD1, SPTBN1, TFPI]
+      fallopian_tube:
+        mouse: []
+        human: []
+      uterus:
+        mouse: []
+        human: [CAVIN2, CD36, FXYD6, NRP2, PDPN, PROX1, TIE1]
