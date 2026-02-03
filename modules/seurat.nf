@@ -73,6 +73,30 @@ process sketch_cluster_seurat {
     """
 }
 
+process seurat_score_markers {
+
+    tag "${sample_name}"
+
+    input:
+    path (notebook_path)
+    path(yaml_path)
+    tuple val(sample_name), path(seurat_rds)
+
+    output:
+    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
+
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_celltype_marker_gene_report.html" }, mode: 'copy'
+
+    script:
+    """
+    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
+    """
+    stub:
+    """
+    touch jupyter_notebook.html
+    """
+}
+
 workflow SEURAT {
     take:
         seurat_rds
@@ -84,7 +108,13 @@ workflow SEURAT {
         
         if(params.cluster_full){
             cluster_seurat(seurat_rds)
-            notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
-            seurat_cluster_plots(notebook, cluster_seurat.out.rds)
+            cluster_notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
+            seurat_cluster_plots(cluster_notebook, cluster_seurat.out.rds)
+        }
+
+        if(params.score_markers){
+            marker_notebook = file("${projectDir}/notebooks/marker_scores.ipynb")
+            marker_yaml = file("${projectDir}/refs/ovary_markers.yaml")
+            seurat_score_markers(marker_notebook, marker_yaml, seurat_rds)
         }
 }
