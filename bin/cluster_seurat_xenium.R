@@ -41,11 +41,11 @@ main <- function(){
     args <- arguments()
 
     if(args$executor == 'local'){
-        options(future.globals.maxSize = 10e9)
+        options(future.globals.maxSize = 20e9)
         plan(multisession)
         print(plan())
     } else if (args$executor == 'slurm') {
-        options(future.globals.maxSize = 10e9)
+        options(future.globals.maxSize = 20e9)
         plan(multicore)
         print(plan())
     }
