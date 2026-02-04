@@ -42,11 +42,11 @@ main <- function(){
 
     if(args$executor == 'local'){
         options(future.globals.maxSize = 2e9)
-        plan(multisession, workers = availableCores(omit = 1))
+        plan(multisession)
         print(plan())
     } else if (args$executor == 'slurm') {
         options(future.globals.maxSize = 2e9)
-        plan(multicore, workers = availableCores(omit = 1, methods = 'Slurm'))
+        plan(multicore)
         print(plan())
     }
     
