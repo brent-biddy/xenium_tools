@@ -6,6 +6,8 @@ process create_seurat_object {
     
     tag "${sample_name}"
 
+    time = { 15.m * (1 + task.attempt)}
+
     input:
     tuple val(sample_name), path(xenium_output_path)
 
@@ -34,6 +36,8 @@ process create_seurat_object {
 process xenium_qc_plots {
 
     tag "${sample_name}"
+
+    time = { 15.m * (1 + task.attempt)}
 
     input:
     path (notebook_path)

@@ -2,6 +2,8 @@ process cluster_seurat {
     
     tag "${sample_name}"
 
+    time { 1.h * (1 + task.attempt)}
+
     input:
     tuple val(sample_name), path(seurat_obj)
     
@@ -28,6 +30,8 @@ process seurat_cluster_plots {
 
     tag "${sample_name}"
 
+    time = { 15.m * (1 + task.attempt) }
+
     input:
     path (notebook_path)
     tuple val(sample_name), path(seurat_rds)
@@ -50,6 +54,8 @@ process seurat_cluster_plots {
 process sketch_cluster_seurat {
     
     tag "${sample_name}"
+
+    time = { 15.m * (1 + task.attempt)}
 
     input:
     tuple val(sample_name), path(seurat_obj)
@@ -76,6 +82,8 @@ process sketch_cluster_seurat {
 process seurat_score_markers {
 
     tag "${sample_name}"
+
+    time = { 15.m * (1 + task.attempt)}
 
     input:
     path (notebook_path)
