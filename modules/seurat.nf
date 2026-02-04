@@ -3,6 +3,7 @@ process cluster_seurat {
     tag "${sample_name}"
 
     time { 1.h * (1 + task.attempt)}
+    errorStrategy { task.attempt < 3 ? 'retry' : 'ignore'}
 
     input:
     tuple val(sample_name), path(seurat_obj)
