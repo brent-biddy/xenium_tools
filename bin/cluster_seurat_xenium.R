@@ -3,7 +3,7 @@
 library(Seurat, quietly=TRUE)
 library(data.table, quietly=TRUE)
 library(dplyr, quietly=TRUE)
-library(future, quietly=TRUE)
+# library(future, quietly=TRUE)
 
 arguments <- function(){
     
@@ -40,15 +40,15 @@ main <- function(){
 
     args <- arguments()
 
-    if(args$executor == 'local'){
-        options(future.globals.maxSize = 20e9)
-        plan(multisession)
-        print(plan())
-    } else if (args$executor == 'slurm') {
-        options(future.globals.maxSize = 20e9)
-        plan(multicore)
-        print(plan())
-    }
+    # if(args$executor == 'local'){
+    #     options(future.globals.maxSize = 20e9)
+    #     plan(multisession)
+    #     print(plan())
+    # } else if (args$executor == 'slurm') {
+    #     options(future.globals.maxSize = 20e9)
+    #     plan(multicore)
+    #     print(plan())
+    # }
     
     print("Loading Seurat Object")
     seurat <- readRDS(args$seurat_object)
