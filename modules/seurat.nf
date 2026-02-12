@@ -2,7 +2,7 @@ process cluster_seurat {
     
     tag "${sample_name}"
 
-    time { 1.h * (1 + task.attempt)}
+    time { 2.h * (1 + task.attempt)}
     errorStrategy { task.attempt < 3 ? 'retry' : 'ignore'}
 
     input:
