@@ -1,0 +1,1093 @@
+---
+title: "Marker List Analysis"
+author: "Brent Biddy"
+output:
+    html_document:
+        code_folding: "show"
+        toc: true
+        toc_float: true
+        fig_width: 10
+        fig_height: 10
+params:
+    marker_path: "./marker_list.yaml"
+    rds_path: "./seurat_object.RDS"
+    annotation_path: "./annotations.csv"
+    cluster_name: "xenium_clusters"
+    coi: !expr c(19)
+    roi: 3
+    filt_umap_1: 0
+---
+
+# Introduction
+
+This analysis examines spatial transcriptomics data from human ovary to identify and characterize different cell types using marker gene expression patterns. We analyze Xenium spatial data from ROI `r knitr::combine_words(params$roi)`, focusing on how cell type markers correspond to the clustering structure observed in the data.
+This analysis will focus mainly on identifying oocytes.
+
+The main objectives are:
+
+1. **Load and validate marker gene lists** for oocytes, granulosa cells, theca cells, upC1, and upC2 cell types
+2. **Calculate cell type scores** based on average expression of the marker gene list
+3. **Visualize expression patterns** across clusters using heatmaps, UMAPs, and violin plots
+4. **Perform focused sub-clustering** on specific clusters of interest to identify potential subpopulations of oocytes
+
+# Setup and Configuration
+
+```{r setup}
+# Set global chunk options to suppress warnings and messages
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = TRUE) 
+
+# Load required libraries
+library(Seurat)        # Single-cell analysis
+library(yaml)          # YAML file parsing
+library(dplyr)         # Data manipulation
+library(stringr)       # String operations
+library(cowplot)       # Plot arrangements
+library(ggplot2)       # Visualization
+# library(VennDiagram)   # Venn diagrams
+
+# Set plotting options
+options(repr.plot.width = 12, repr.plot.height = 7.5, repr.plot.res = 200)
+options(warn = -1)  # Suppress warnings
+
+if(params$cluster_name == "seurat_clusters"){
+    umap_use <- "umap"
+} else{
+    umap_use <- "xenium_umap"
+}
+```
+
+# Data Loading and Preprocessing
+
+## Load Marker List
+
+We begin by loading a curated list of marker genes for each cell type. These markers will serve as the basis for calculating cell type enrichment scores.
+
+```{r load-markers}
+# Display the marker file path for verification
+print(params$marker_path)
+
+# Read YAML file containing cell type markers
+marker_list <- yaml::read_yaml(file = params$marker_path)
+
+# Extract marker genes for each cell type
+marker_list <- lapply(marker_list$cell_types, '[[', "markers")
+
+# Flatten nested lists to single character vectors
+marker_list <- lapply(marker_list, unlist)
+
+# Convert all gene names to uppercase for consistency
+marker_list <- lapply(marker_list, str_to_upper)
+
+# Create a data frame from the marker list for easier manipulation
+marker_dat <- data.frame(unlist(marker_list))
+colnames(marker_dat)[1] <- "Gene"
+
+# Extract cell type from rownames (format: celltype.number)
+marker_dat[["cell_type"]] <- rownames(marker_dat)
+marker_dat[["cell_type"]] <- strsplit(marker_dat[["cell_type"]], split = ".", fixed = TRUE)
+marker_dat[["cell_type"]] <- unlist(lapply(marker_dat[["cell_type"]], "[[", 1))
+```
+
+## Load Stage Annotations
+
+We load the follicle developmental stage annotations that Taylor provided.
+
+```{r load-annotations}
+# Read follicle stage annotation data
+stage_dat <- data.table::fread(params$annotation_path, data.table = FALSE)
+
+# Filter and prepare stage data for ROI3
+stage_dat |>
+    filter(.data[["Donor ROI"]] == paste0("ROI", params$roi)) |>
+    select(c("Donor ROI", "Image", "Stage Labels", "Quality")) |>
+    mutate(cell = Image) ->
+    stage_dat
+
+# Extract cell ID from image filename
+# Format: [prefix]_[cell_id].png
+stage_dat[["cell"]] <- strsplit(x = stage_dat[["cell"]], split = "_")
+stage_dat[["cell"]] <- sapply(stage_dat[["cell"]], "[[", 2)
+stage_dat[["cell"]] <- gsub(pattern = ".png", replacement = "", x = stage_dat[["cell"]])
+```
+
+## Load Seurat Object
+
+The Seurat object contains the preprocessed Xenium spatial transcriptomics data, including normalized expression values, dimensionality reductions, and cluster assignments.
+
+```{r load-seurat}
+# Load the pre-processed Seurat object containing spatial transcriptomics data
+seurat <- readRDS(params$rds_path)
+seurat
+```
+
+## Merge Annotations with Seurat Object
+
+By integrating stage annotations into the Seurat object metadata, we can overlay Taylor's follicle annotations onto our clustering results and examine whether clusters correspond to known developmental stages.
+
+```{r merge-annotations}
+# Join stage and quality annotations to the Seurat metadata
+# This allows us to analyze clusters by developmental stage
+seurat[[]] <- left_join(
+    seurat[[]], 
+    stage_dat[c("cell", "Stage Labels", "Quality")], 
+    by = join_by(cell_id == cell)
+)
+```
+
+# Marker Gene Analysis
+
+## Marker Summary Statistics
+
+The number of markers for each cell type.
+
+```{r marker-summary}
+# Count the number of markers per cell type
+marker_dat |>
+    select(cell_type, Gene) |>
+    group_by(cell_type) |>
+    summarise(Markers = n())
+```
+
+## Identify Duplicate Markers
+
+Some genes may serve as markers for multiple cell types. Identifying these helps us understand which markers are cell type-specific versus broadly expressed. Genes that appear in multiple marker lists are labeled as "multi" to prevent misinterpretation.
+
+```{r duplicate-markers}
+# Find genes that are markers for multiple cell types
+# This helps identify genes with broader expression patterns
+duplicated_markers <- marker_dat[
+    duplicated(x = marker_dat[["Gene"]]) | 
+    duplicated(x = marker_dat[["Gene"]], fromLast = TRUE), 
+] |> 
+    arrange(Gene) |> 
+    tibble::remove_rownames()
+
+duplicated_markers
+```
+
+## Label Multi-Cell Type Markers
+
+```{r label-multi-markers}
+# Assign "multi" label to genes that appear in multiple cell types
+# This prevents them from being associated with a single cell type
+marker_dat[marker_dat[["Gene"]] %in% marker_dat[["Gene"]][duplicated(marker_dat[["Gene"]])], "cell_type"] <- "multi"
+```
+
+# Color Scheme Setup
+
+Consistent color schemes across all visualizations make it easier to track clusters and cell types throughout the analysis.
+
+```{r setup-colors}
+# Generate color palette for clusters
+clusters <- sort(unique(seurat[[]][[params$cluster_name]]), na.last = TRUE)
+cluster_cols <- pals::brewer.bugn(n = length(clusters))
+names(cluster_cols) <- clusters
+
+# Remove NA cluster colors for heatmap (if any)
+heatmap_cluster_cols <- cluster_cols[!is.na(names(cluster_cols))]
+
+# Generate color palette for cell types
+cell_types <- sort(unique(marker_dat$cell_type), na.last = TRUE)
+celltype_cols <- pals::stepped(n = length(cell_types))
+names(celltype_cols) <- cell_types
+```
+
+## Cluster Distribution
+
+Before diving into marker expression, it's useful to see how cells are distributed across clusters. This gives us a sense of cluster sizes and helps identify rare versus common cell populations.
+
+```{r cluster-distribution}
+# Display the number of cells in each cluster
+table(seurat[[]][[params$cluster_name]])
+```
+
+## Calculate Average Expression Scores
+
+For each cell type, we calculate a composite score by averaging the expression of all its marker genes. This approach provides a single metric that summarizes how well each cell matches each cell type's marker gene profile. We also calculate a differential score between upC1 and upC2 to identify cells that are more similar to one or the other.
+
+```{r calculate-avg-expression}
+# For each cell type, calculate the average expression of its marker genes
+# This creates a composite "cell type score" for each cell
+for(ct in unique(marker_dat$cell_type)){
+    # Get marker genes for this cell type
+    marker_dat |>
+        filter(cell_type == ct) |>
+        pull(Gene) -> gene_list
+    
+    # Fetch expression data for these markers
+    exp_dat <- FetchData(object = seurat, vars = gene_list)
+    
+    # Calculate mean expression across all markers
+    exp_dat$avg_exp <- rowMeans(exp_dat)
+    
+    # Add as metadata to Seurat object
+    seurat[[paste0(ct, "_avg")]] <- exp_dat$avg_exp
+}
+
+# Calculate differential score between upC1 and upC2
+# Positive values indicate upC1-like, negative indicate upC2-like
+seurat[["upC_diff"]] <- seurat[["upC1_avg"]] - seurat[["upC2_avg"]]
+```
+
+# Heatmap Visualization
+
+## Overview
+
+The heatmap provides a comprehensive view of marker gene expression across all clusters. Rows are organized by cell type (indicated by the left annotation), while columns are grouped by cluster identity (top annotation). This visualization helps us identify:
+
+- Which clusters express markers for specific cell types
+- Whether marker expression patterns align with cluster boundaries
+- Potential mixed or transitional populations
+
+**How to interpret**: Dark purple indicates high expression, yellow indicates low expression.
+
+## Prepare Heatmap Data
+
+```{r prepare-heatmap-data}
+# Generate heatmap data using Seurat's DoHeatmap function
+# Downsample to 200 cells per cluster for visualization
+heat_dat <- DoHeatmap(
+    object = subset(seurat, downsample = 200),  
+    group.by = params$cluster_name, 
+    features = unlist(marker_list), 
+    label = FALSE
+)$data |> 
+    tidyr::drop_na()
+
+# Convert to wide format matrix for ComplexHeatmap
+heat_dat |>
+    select(Feature, Cell, Expression) |>
+    tidyr::pivot_wider(names_from = Cell, values_from = Expression, values_fill = NA) |>
+    tibble::column_to_rownames("Feature") |>
+    as.matrix() -> heat_mtx
+
+# Create column annotations (cluster identities)
+heat_dat |>
+    select(Cell, Identity) |>
+    distinct(Cell, .keep_all = TRUE) |>
+    mutate(Identity = as.factor(Identity), Cell = as.vector(Cell)) |>
+    filter(Cell %in% colnames(heat_mtx)) |>
+    arrange(Identity) |>
+    tibble::column_to_rownames("Cell") ->
+    colAnnot
+
+# Create row annotations (cell type associations)
+heat_dat |>
+    left_join(y = marker_dat, by = join_by(Feature == Gene)) |>
+    select(Feature, cell_type) |>
+    filter(Feature %in% rownames(heat_mtx)) |>
+    distinct(Feature, .keep_all = TRUE) ->
+    rowAnnot
+
+# Reorder matrix columns to match annotation order
+heat_mtx <- heat_mtx[, rownames(colAnnot)]
+```
+
+## Generate Complex Heatmap
+
+```{r generate-heatmap, fig.width=12, fig.height=10}
+# Create comprehensive heatmap with annotations
+ComplexHeatmap::Heatmap(
+    matrix = heat_mtx,
+    row_names_side = "left",
+    col = viridis::viridis(n = 100),  # Use viridis color scale
+    show_column_names = FALSE,         # Hide cell names (too many)
+    show_row_names = TRUE,             # Show gene names
+    show_column_dend = FALSE,          # No column dendrogram
+    show_row_dend = FALSE,             # No row dendrogram
+    cluster_columns = FALSE,           # Don't cluster columns
+    cluster_rows = FALSE,              # Don't cluster rows
+    cluster_column_slices = FALSE,     # Don't cluster column groups
+    cluster_row_slices = FALSE,        # Don't cluster row groups
+    column_split = colAnnot$Identity,  # Split by cluster
+    row_split = rowAnnot$cell_type,    # Split by cell type
+    # Top annotation shows cluster identity
+    top_annotation = ComplexHeatmap::HeatmapAnnotation(
+        Cluster = colAnnot$Identity, 
+        col = list("Cluster" = heatmap_cluster_cols), 
+        annotation_name_gp = gpar(fontsize = 10), 
+        show_legend = FALSE
+    ),
+    # Left annotation shows cell type
+    left_annotation = ComplexHeatmap::rowAnnotation(
+        CellType = rowAnnot$cell_type, 
+        col = list("CellType" = celltype_cols), 
+        annotation_name_gp = gpar(fontsize = 10), 
+        show_legend = FALSE
+    ),
+    row_names_gp = gpar(fontsize = 6),
+    heatmap_legend_param = list(
+        title = "Counts",
+        legend_height = unit(6, "cm"),
+        title_position = "leftcenter-rot"
+    ),
+    show_parent_dend_line = FALSE
+)
+```
+
+# Cell Type Expression Patterns
+
+In this section, we examine the spatial and cluster-level distribution of each cell type signature. For each cell type, we show:
+
+1. **UMAP (left)**: Cells colored by their cell type score
+2. **Cluster UMAP (middle)**: The original cluster assignments for reference
+3. **Violin plot (right)**: Distribution of cell type scores across clusters
+
+These visualizations help identify which clusters are enriched for specific cell types and whether cell type identities align with the clustering structure.
+
+## Oocyte Markers
+
+
+```{r oocyte-plots, fig.width=12, fig.height=8}
+# Create cluster UMAP for reference
+cluster_umap <- DimPlot(
+    object = seurat, 
+    group.by = params$cluster_name, 
+    reduction = umap_use, 
+    cols = cluster_cols, 
+    label = TRUE, 
+    repel = TRUE
+) + 
+    theme(legend.position = "right", legend.key.size = unit(2, "pt"))
+
+# UMAP colored by average oocyte marker expression
+oocyte_umap <- FeaturePlot(
+    object = seurat, 
+    features = "oocyte_avg", 
+    reduction = umap_use
+) + 
+    theme_bw() + 
+    theme(legend.position = "right")
+
+# Violin plot of oocyte score by cluster
+oocyte_vln <- VlnPlot(
+    object = seurat, 
+    features = "oocyte_avg", 
+    pt.size = 0, 
+    group.by = params$cluster_name
+) + 
+    scale_fill_manual(values = cluster_cols) + 
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) + 
+    theme_linedraw() + 
+    theme(legend.position = "none")
+
+# Combine plots
+plot_grid(
+    oocyte_umap,
+    cluster_umap,
+    oocyte_vln,
+    align = 'vh'
+)
+```
+
+## Theca Cell Markers
+
+```{r theca-plots, fig.width=12, fig.height=8}
+# UMAP colored by average theca marker expression
+theca_umap <- FeaturePlot(
+    object = seurat, 
+    features = "theca_cell_avg", 
+    min.cutoff = 0.0, 
+    reduction = umap_use
+) + 
+    theme_bw() + 
+    theme(legend.position = "right")
+
+# Violin plot of theca score by cluster
+theca_vln <- VlnPlot(
+    object = seurat, 
+    features = "theca_cell_avg", 
+    pt.size = 0, 
+    group.by = params$cluster_name
+) + 
+    scale_fill_manual(values = cluster_cols) + 
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) + 
+    theme_linedraw() + 
+    theme(legend.position = "none")
+
+# Combine plots
+plot_grid(
+    theca_umap,
+    cluster_umap,
+    theca_vln,
+    align = 'vh'
+)
+```
+
+## Granulosa Cell Markers
+
+```{r granulosa-plots, fig.width=12, fig.height=8}
+# UMAP colored by average granulosa marker expression
+granulosa_umap <- FeaturePlot(
+    object = seurat, 
+    features = "granulosa_cell_avg", 
+    min.cutoff = 0.0, 
+    reduction = umap_use
+) + 
+    theme_bw() + 
+    theme(legend.position = "right")
+
+# Violin plot of granulosa score by cluster
+granulosa_vln <- VlnPlot(
+    object = seurat, 
+    features = "granulosa_cell_avg", 
+    pt.size = 0, 
+    group.by = params$cluster_name
+) + 
+    scale_fill_manual(values = cluster_cols) + 
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) + 
+    theme_linedraw() + 
+    theme(legend.position = "none")
+
+# Combine plots
+plot_grid(
+    granulosa_umap,
+    cluster_umap,
+    granulosa_vln,
+    align = 'vh'
+)
+```
+
+## UPC1 Markers
+
+```{r upc1-plots, fig.width=12, fig.height=8}
+# UMAP colored by average UPC1 marker expression
+upc1_umap <- FeaturePlot(
+    object = seurat, 
+    features = "upC1_avg", 
+    min.cutoff = 1.0, 
+    reduction = umap_use
+) + 
+    theme_bw() + 
+    theme(legend.position = "right")
+
+# Violin plot of UPC1 score by cluster
+upc1_vln <- VlnPlot(
+    object = seurat, 
+    features = "upC1_avg", 
+    pt.size = 0, 
+    group.by = params$cluster_name
+) + 
+    scale_fill_manual(values = cluster_cols) + 
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) + 
+    theme_linedraw() + 
+    theme(legend.position = "none")
+
+# Combine plots
+plot_grid(
+    upc1_umap,
+    cluster_umap,
+    upc1_vln,
+    align = 'vh'
+)
+```
+
+## UPC2 Markers
+
+```{r upc2-plots, fig.width=12, fig.height=8}
+# UMAP colored by average UPC2 marker expression
+upc2_umap <- FeaturePlot(
+    object = seurat, 
+    features = "upC2_avg", 
+    min.cutoff = 0.0, 
+    reduction = umap_use
+) + 
+    theme_bw() + 
+    theme(legend.position = "right")
+
+# Violin plot of UPC2 score by cluster
+upc2_vln <- VlnPlot(
+    object = seurat, 
+    features = "upC2_avg", 
+    pt.size = 0, 
+    group.by = params$cluster_name
+) + 
+    scale_fill_manual(values = cluster_cols) + 
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) + 
+    theme_linedraw() + 
+    theme(legend.position = "none")
+
+# Combine plots
+plot_grid(
+    upc2_umap,
+    cluster_umap,
+    upc2_vln,
+    align = 'vh'
+)
+```
+
+## UPC1 vs UPC2 Differential Score
+
+**Interpretation**: The differential score (UPC1 - UPC2) highlights cells along a spectrum:
+- **Positive values (red)**: More UPC1-like
+- **Negative values (blue)**: More UPC2-like
+- **Values near zero**: Mixed or intermediate states
+
+This can reveal whether UPC1 and UPC2 represent discrete populations or ends of a continuous spectrum.
+
+```{r upc-diff-plots, fig.width=12, fig.height=8}
+# UMAP showing UPC1-UPC2 difference
+# Positive values = more UPC1-like, negative = more UPC2-like
+upc_umap <- FeaturePlot(
+    object = seurat, 
+    features = "upC_diff", 
+    min.cutoff = 0.0, 
+    reduction = umap_use
+) + 
+    theme_bw() + 
+    theme(legend.position = "right")
+
+# Violin plot of differential score by cluster
+upc_vln <- VlnPlot(
+    object = seurat, 
+    features = "upC_diff", 
+    pt.size = 0, 
+    group.by = params$cluster_name
+) + 
+    scale_fill_manual(values = cluster_cols) + 
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) + 
+    theme_linedraw() + 
+    theme(legend.position = "none")
+
+# Combine plots
+plot_grid(
+    upc_umap,
+    cluster_umap,
+    upc_vln,
+    align = 'vh'
+)
+```
+
+## Combined Violin Plots
+
+This stacked view allows for direct comparison of cell type score distributions across all clusters.
+
+# Stack all cell type violin plots for easy comparison
+```{r combined-violins, fig.width=10, fig.height=12}
+plot_grid(
+    oocyte_vln + theme(legend.position = "none") + xlab(""),
+    granulosa_vln + theme(legend.position = "none") + xlab(""),
+    theca_vln + theme(legend.position = "none") + xlab(""),
+    upc1_vln + theme(legend.position = "none") + xlab(""),
+    upc2_vln + theme(legend.position = "none"),
+    ncol = 1,
+    align = "vh"
+)
+```
+
+# Focused Cluster Analysis
+
+## Motivation
+
+Sometimes individual clusters contain heterogeneity that isn't captured by the initial clustering. By selecting a cluster of interest and re-analyzing it in isolation, we can:
+
+- Identify subpopulations within the cluster
+- Examine whether marker-based dimensionality reduction reveals different structure
+
+## Select Cluster of Interest
+
+```{r select-cluster}
+# Define which cluster to analyze in depth
+# cluster_of_interest <- as.character(params$coi)
+
+# Total number of unique marker genes
+length(unique(marker_dat$Gene))
+```
+
+## Subset and Re-analyze Cluster
+
+We extract cluster `r knitr::combine_words(params$coi)` and perform a complete re-analysis, including both standard (all genes) and marker-based (curated markers only) dimensionality reduction. This allows us to compare whether using only biologically-relevant markers reveals different clustering structure.
+
+```{r subset-cluster}
+# Store original cluster assignments
+seurat[["seurat_clusters_full"]] <- seurat[["seurat_clusters"]]
+
+# Subset to only cells in cluster of interest
+# cluster_seurat <- subset(seurat, seurat_clusters %in% params$coi)
+cluster_seurat <- subset(seurat, !!sym(params$cluster_name) %in% params$coi)
+cluster_seurat
+```
+
+## Re-process Subset
+
+```{r reprocess-cluster}
+# Perform standard Seurat workflow on the subset
+# This allows us to find sub-structure within the cluster
+
+# Normalize counts
+cluster_seurat <- NormalizeData(object = cluster_seurat)
+
+# Find highly variable genes
+cluster_seurat <- FindVariableFeatures(object = cluster_seurat)
+
+# Scale data
+cluster_seurat <- ScaleData(object = cluster_seurat)
+
+# Run PCA on all genes
+cluster_seurat <- RunPCA(object = cluster_seurat)
+
+# Run PCA using only marker genes
+cluster_seurat <- RunPCA(
+    object = cluster_seurat, 
+    features = unique(marker_dat$Gene), 
+    reduction.name = "pca_markers"
+)
+
+# Find neighbors using standard PCA
+cluster_seurat <- FindNeighbors(object = cluster_seurat, dims = 1:30)
+
+# Find neighbors using marker-based PCA
+cluster_seurat <- FindNeighbors(
+    object = cluster_seurat, 
+    dims = 1:30, 
+    reduction = "pca_markers", 
+    graph.name = "marker_graph"
+)
+
+# Cluster using standard graph
+cluster_seurat <- FindClusters(object = cluster_seurat)
+
+# Cluster using marker-based graph
+cluster_seurat <- FindClusters(
+    object = cluster_seurat, 
+    graph.name = "marker_graph", 
+    cluster.name = "marker_clusters"
+)
+
+# Generate UMAP from standard PCA
+cluster_seurat <- RunUMAP(object = cluster_seurat, dims = 1:30)
+
+# Generate UMAP from marker-based PCA
+cluster_seurat <- RunUMAP(
+    object = cluster_seurat, 
+    dims = 1:30, 
+    reduction = "pca_markers", 
+    reduction.name = "marker_umap"
+)
+```
+
+# Spatial Visualization
+
+Spatial plots show where cells are located in the original tissue context. This is important for understanding whether identified clusters correspond to anatomically distinct regions or are spatially intermingled.
+This comparison shows the original cluster assignments (left) alongside just the cells from cluster `r knitr::combine_words(params$coi)` (right).
+
+## Tissue Distribution - Cluster of Interest
+
+```{r tissue-cluster-highlight, fig.width=12, fig.height=6}
+# Plot spatial distribution of all clusters
+SeuratObject::GetTissueCoordinates(object = seurat) |>
+    left_join(seurat[[]], by = join_by(cell == cell_id)) |>
+    ggplot(aes(x = x, y = y, color = as.factor(!!sym(params$cluster_name)))) + 
+    geom_point(size = 0) ->
+    plt_one
+
+# Highlight only the cluster of interest
+SeuratObject::GetTissueCoordinates(object = seurat) |>
+    left_join(seurat[[]], by = join_by(cell == cell_id)) |>
+    mutate(coi = if_else(!!sym(params$cluster_name) %in% params$coi, !!sym(params$cluster_name), NA)) |>
+    mutate(coi = as.factor(coi)) |>
+    ggplot(aes(x = x, y = y, color = as.factor(coi))) + 
+    geom_point(size = 0) ->
+    plt_two
+
+# Display side by side
+plot_grid(
+    plt_one + coord_flip(),
+    plt_two + coord_flip()
+)
+```
+
+## Tissue Distribution - Original vs Subset
+
+This comparison shows the original cluster assignments (left) alongside just the new subset cluster ids (right).
+
+```{r tissue-original-vs-subset, fig.width=12, fig.height=6}
+# Original cluster assignments in tissue space
+SeuratObject::GetTissueCoordinates(object = seurat) |>
+    left_join(seurat[[]], by = join_by(cell == cell_id)) |>
+    ggplot(aes(x = x, y = y, color = as.factor(!!sym(params$cluster_name)))) + 
+    geom_point(size = 0) ->
+    plt_one
+
+# Subset cluster assignments in tissue space
+SeuratObject::GetTissueCoordinates(object = seurat) |>
+    left_join(cluster_seurat[[]], by = join_by(cell == cell_id)) |>
+    ggplot(aes(x = x, y = y, color = seurat_clusters)) + 
+    geom_point(size = 0) ->
+    plt_two
+
+# Display side by side
+plot_grid(
+    plt_one + coord_flip(),
+    plt_two + coord_flip()
+)
+```
+
+## Tissue Distribution - Marker-based Clustering
+
+**Key question**: Do the marker-based sub-clusters (right panel) show spatial organization? If so, this suggests biologically meaningful heterogeneity within cluster `r knitr::combine_words(params$coi)`.
+
+```{r tissue-marker-clusters, fig.width=12, fig.height=6}
+# Original cluster assignments in tissue space
+SeuratObject::GetTissueCoordinates(object = seurat) |>
+    left_join(seurat[[]], by = join_by(cell == cell_id)) |>
+    ggplot(aes(x = x, y = y, color = as.factor(!!sym(params$cluster_name)))) + 
+    geom_point(size = 0) ->
+    plt_one
+
+# Marker-based sub-clustering in tissue space
+SeuratObject::GetTissueCoordinates(object = seurat) |>
+    left_join(cluster_seurat[[]], by = join_by(cell == cell_id)) |>
+    ggplot(aes(x = x, y = y, color = marker_clusters)) + 
+    geom_point(size = 0) ->
+    plt_two
+
+# Display side by side
+plot_grid(
+    plt_one + coord_flip(),
+    plt_two + coord_flip()
+)
+```
+
+# UMAP Analysis - Standard Reduction
+
+These plots use dimensionality reduction based on all genes in the dataset (standard workflow). They help us understand the overall structure and quality of the cluster `r knitr::combine_words(params$coi)` subset.
+
+## Quality Control Metrics
+
+**Quality indicators**:
+- **Cell area**:
+- **nCount_Xenium**: Total transcript counts; very low values may indicate low-quality cells
+- **nFeature_Xenium**: Number of unique genes detected
+
+```{r umap-qc-standard, fig.width=12, fig.height=12}
+# Visualize cluster identity and QC metrics in UMAP space
+
+# Cluster assignments
+p1 <- DimPlot(
+    object = cluster_seurat, 
+    group.by = params$cluster_name, 
+    reduction = "umap"
+)
+
+# Cluster assignments
+p2 <- DimPlot(
+    object = cluster_seurat, 
+    group.by = "seurat_clusters", 
+    reduction = "umap"
+)
+
+# Cell area
+p3 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "cell_area", 
+    reduction = "umap"
+)
+
+# Total counts (library size)
+p4 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "nCount_Xenium", 
+    reduction = "umap"
+)
+
+# Number of detected features (genes)
+p5 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "nFeature_Xenium", 
+    reduction = "umap"
+)
+
+# Display in grid
+plot_grid(plotlist = list(p1, p2, p3, p4, p5), ncol = 2)
+```
+
+## Cell Type Scores
+
+```{r umap-cell-type-scores-standard, fig.width=12, fig.height=12}
+# Visualize cluster identity and QC metrics in marker-based UMAP space
+
+# Marker-based cluster assignments
+p1 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "theca_cell_avg", 
+    reduction = "umap"
+)
+
+# Cell area
+p2 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "granulosa_cell_avg", 
+    reduction = "umap"
+)
+
+# Total counts (library size)
+p3 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "upC1_avg", 
+    reduction = "umap"
+)
+
+# Number of detected features (genes)
+p4 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "upC2_avg", 
+    reduction = "umap"
+)
+
+# Number of detected features (genes)
+p5 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "upC_diff", 
+    reduction = "umap"
+)
+
+# Display in grid
+plot_grid(plotlist = list(p1, p2, p3, p4, p5), ncol = 2)
+```
+
+## Biological Metadata
+
+Do cells from different developmental stages or segmentation quality categories cluster separately?
+
+```{r umap-metadata-standard, fig.width=12, fig.height=6}
+# Visualize biological annotations in UMAP space
+
+# Developmental stage labels
+plot_grid(
+    DimPlot(
+        object = cluster_seurat, 
+        group.by = "Stage Labels", 
+        reduction = "umap"
+    ) + 
+        theme(legend.position = "bottom"),
+    
+    # Quality annotations
+    DimPlot(
+        object = cluster_seurat, 
+        group.by = "Quality", 
+        reduction = "umap"
+    ) + 
+        theme(legend.position = "bottom")
+)
+```
+
+# UMAP Analysis - Marker-based Reduction
+
+These plots use dimensionality reduction based only on curated marker genes. This focused approach might reveal biologically meaningful structure that might be obscured by noise from non-informative genes.
+
+## Quality Control Metrics
+
+**Comparison with standard UMAP**:
+
+```{r umap-qc-markers, fig.width=12, fig.height=12}
+# Visualize cluster identity and QC metrics in marker-based UMAP space
+
+# Marker-based cluster assignments
+p1 <- DimPlot(
+    object = cluster_seurat, 
+    group.by = "marker_clusters", 
+    reduction = "marker_umap"
+)
+
+# Cell area
+p2 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "cell_area", 
+    reduction = "marker_umap"
+)
+
+# Total counts (library size)
+p3 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "nCount_Xenium", 
+    reduction = "marker_umap"
+)
+
+# Number of detected features (genes)
+p4 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "nFeature_Xenium", 
+    reduction = "marker_umap"
+)
+
+# Display in grid
+plot_grid(plotlist = list(p1, p2, p3, p4))
+```
+
+## Biological Metadata
+
+Examining how developmental stage and quality annotations map onto the marker-based UMAP helps validate whether our marker-driven clustering gives better results.
+
+```{r umap-metadata-markers, fig.width=12, fig.height=6}
+# Visualize biological annotations in marker-based UMAP space
+
+# Developmental stage labels
+plot_grid(
+    DimPlot(
+        object = cluster_seurat, 
+        group.by = "Stage Labels", 
+        reduction = "marker_umap"
+    ) + 
+        theme(legend.position = "bottom"),
+    
+    # Quality annotations
+    DimPlot(
+        object = cluster_seurat, 
+        group.by = "Quality", 
+        reduction = "marker_umap"
+    ) + 
+        theme(legend.position = "bottom")
+)
+```
+
+## Cell Type Scores
+
+```{r umap-cell-type-scores-markers, fig.width=12, fig.height=12}
+# Visualize cluster identity and QC metrics in marker-based UMAP space
+
+# Marker-based cluster assignments
+p1 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "theca_cell_avg", 
+    reduction = "marker_umap"
+)
+
+# Cell area
+p2 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "granulosa_cell_avg", 
+    reduction = "marker_umap"
+)
+
+# Total counts (library size)
+p3 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "upC1_avg", 
+    reduction = "marker_umap"
+)
+
+# Number of detected features (genes)
+p4 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "upC2_avg", 
+    reduction = "marker_umap"
+)
+
+# Number of detected features (genes)
+p5 <- FeaturePlot(
+    object = cluster_seurat, 
+    features = "upC_diff", 
+    reduction = "marker_umap"
+)
+
+# Display in grid
+plot_grid(plotlist = list(p1, p2, p3, p4, p5), ncol = 2)
+```
+
+```{r}
+cells_keep <- Embeddings(object = cluster_seurat, "umap")[, 1] < params$filt_umap_1
+cluster_cluster_seurat <- cluster_seurat[, cells_keep]
+cluster_cluster_seurat
+```
+
+
+```{r}
+# Perform standard Seurat workflow on the subset
+# This allows us to find sub-structure within the cluster
+
+# Normalize counts
+cluster_cluster_seurat <- NormalizeData(object = cluster_cluster_seurat)
+
+# Find highly variable genes
+cluster_cluster_seurat <- FindVariableFeatures(object = cluster_cluster_seurat)
+
+# Scale data
+cluster_cluster_seurat <- ScaleData(object = cluster_cluster_seurat)
+
+# Run PCA on all genes
+cluster_cluster_seurat <- RunPCA(object = cluster_cluster_seurat)
+
+# # Run PCA using only marker genes
+# cluster_cluster_seurat <- RunPCA(
+#     object = cluster_cluster_seurat, 
+#     features = unique(marker_dat$Gene), 
+#     reduction.name = "pca_markers"
+# )
+
+# Find neighbors using standard PCA
+cluster_cluster_seurat <- FindNeighbors(object = cluster_cluster_seurat, dims = 1:30)
+
+# # Find neighbors using marker-based PCA
+# cluster_cluster_seurat <- FindNeighbors(
+#     object = cluster_cluster_seurat, 
+#     dims = 1:30, 
+#     reduction = "pca_markers", 
+#     graph.name = "marker_graph"
+# )
+
+# Cluster using standard graph
+cluster_cluster_seurat <- FindClusters(object = cluster_cluster_seurat)
+
+# # Cluster using marker-based graph
+# cluster_cluster_seurat <- FindClusters(
+#     object = cluster_cluster_seurat, 
+#     graph.name = "marker_graph", 
+#     cluster.name = "marker_clusters"
+# )
+
+# Generate UMAP from standard PCA
+cluster_cluster_seurat <- RunUMAP(object = cluster_cluster_seurat, dims = 1:30)
+
+# # Generate UMAP from marker-based PCA
+# cluster_cluster_seurat <- RunUMAP(
+#     object = cluster_cluster_seurat, 
+#     dims = 1:30, 
+#     reduction = "pca_markers", 
+#     reduction.name = "marker_umap"
+# )
+```
+
+
+
+```{r}
+# Visualize cluster identity and QC metrics in UMAP space
+
+# Cluster assignments
+p1 <- DimPlot(
+    object = cluster_cluster_seurat, 
+    group.by = params$cluster_name, 
+    reduction = "umap"
+)
+
+# Cluster assignments
+p2 <- DimPlot(
+    object = cluster_cluster_seurat, 
+    group.by = "seurat_clusters", 
+    reduction = "umap"
+)
+
+# Cell area
+p3 <- FeaturePlot(
+    object = cluster_cluster_seurat, 
+    features = "cell_area", 
+    reduction = "umap"
+)
+
+# Total counts (library size)
+p4 <- FeaturePlot(
+    object = cluster_cluster_seurat, 
+    features = "nCount_Xenium", 
+    reduction = "umap"
+)
+
+# Number of detected features (genes)
+p5 <- FeaturePlot(
+    object = cluster_cluster_seurat, 
+    features = "nFeature_Xenium", 
+    reduction = "umap"
+)
+
+# Display in grid
+plot_grid(plotlist = list(p1, p2, p3, p4, p5), ncol = 2)
+```

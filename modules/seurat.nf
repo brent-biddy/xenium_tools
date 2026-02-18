@@ -113,13 +113,13 @@ process seurat_subcluster_notebook{
     time = { 15.m * (1 + task.attempt)}
     
     input:
-    path (notebook_path)
-    path(yaml_path)
-    path(annotation_csv)
+    path (notebook_path), name: "rmd_notebook.Rmd"
+    path(yaml_path), name: "marker_list.yaml"
+    path(annotation_csv), name: "annotations.csv"
     tuple val(sample_name), path(seurat_rds)
 
     output:
-    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
+    tuple val(sample_name), path("rmd_notebook.html"), emit: html
 
     publishDir "${params.output_path}/results/notebooks/${sample_name}", pattern: "jupyter_notebook.html", mode: 'copy'
 
@@ -161,7 +161,7 @@ workflow SEURAT {
         }
 
         if(params.subcluster_nb){
-            subcluster_notebook = file("${projectDir}/notebooks/TEST_roi_3_marker_scores_subcluster_oocyte_seurat_clusters.Rmd")
+            subcluster_notebook = file("${projectDir}/notebooks/marker_score_subcluster_oocyte.Rmd")
             annotation_file = file("${projectDir}/refs/follicle_annotations.csv")
             marker_yaml = file("${projectDir}/refs/ovary_markers.yaml")
             seurat_subcluster_notebook(subcluster_notebook, marker_yaml, annotation_file, seurat_rds)
