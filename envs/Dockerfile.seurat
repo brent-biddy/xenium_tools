@@ -1,0 +1,41 @@
+FROM bioconductor/bioconductor_docker:3.21
+
+# Labels
+LABEL Author="Brent Biddy" \
+      Version="1.0.0" \
+      Description="Seurat environment for Xenium spatial transcriptomics analysis"
+
+# Environment variables
+ENV R_LIBS_USER=/usr/local/lib/R/site-library \
+    R_LIBS_SITE=/usr/local/lib/R/site-library \
+    JUPYTER_PATH=/usr/local/share/jupyter \
+    JUPYTER_CONFIG_DIR=/usr/local/etc/jupyter \
+    R_REMOTES_NO_ERRORS_FROM_WARNINGS=true \
+    RETICULATE_PYTHON=/usr/bin/python3
+
+# Post section
+RUN set -e && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        libhdf5-dev libgeos-dev libproj-dev libudunits2-dev \
+        libgdal-dev libglpk-dev pandoc && \
+    rm -rf /var/lib/apt/lists/* && \
+    \
+    # Install Python packages
+    pip3 install --no-cache-dir --break-system-packages \
+        nbconvert jupyter ipykernel matplotlib && \
+    \
+    # Install R packages
+    R --slave -e ' \
+        options(repos = c(CRAN = "https://cloud.r-project.org")); \
+        ncpus <- parallel::detectCores(); \
+        install.packages(c("BiocManager", "remotes", "IRkernel", "pals"), Ncpus = ncpus); \
+        remotes::install_version("arrow", version = "21.0.0", upgrade = "never", Ncpus = ncpus); \
+        BiocManager::install(c("Seurat", "SeuratObject", "Signac", "patchwork", \
+                               "data.table", "dplyr", "argparse", "R.utils"), \
+                             update = FALSE, ask = FALSE, Ncpus = ncpus); \
+        IRkernel::installspec(name = "ir", displayname = "R (Seurat)", user = FALSE); \
+        pkgs <- c("Seurat", "SeuratObject", "Signac", "arrow", "IRkernel"); \
+        if (!all(sapply(pkgs, requireNamespace, quietly = TRUE))) { \
+            stop("Package installation failed") \
+        }' && \
+    apt-get clean
