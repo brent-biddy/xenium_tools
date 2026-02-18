@@ -106,6 +106,39 @@ process seurat_score_markers {
     """
 }
 
+process seurat_subcluster_notebook{
+
+    tag "${sample_name}"
+    
+    time = { 15.m * (1 + task.attempt)}
+    
+    input:
+    path (notebook_path)
+    path(yaml_path)
+    path(annotation_csv)
+    tuple val(sample_name), path(seurat_rds)
+
+    output:
+    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
+
+    publishDir "${params.output_path}/results/notebooks/${sample_name}", pattern: "jupyter_notebook.html", mode: 'copy'
+
+    script:
+    """
+    Rscript -e 'rmarkdown::render(input = "${notebook_path}",\
+                                    params = list(marker_path = "${yaml_path}",\
+                                    annotation_path = "${annotation_csv}",\
+                                    rds_path = "${seurat_rds}")\
+                                )'
+    """
+    stub:
+    """
+    touch jupyter_notebook.html
+    """
+
+}
+
+
 workflow SEURAT {
     take:
         seurat_rds
@@ -125,5 +158,12 @@ workflow SEURAT {
             marker_notebook = file("${projectDir}/notebooks/marker_scores.ipynb")
             marker_yaml = file("${projectDir}/refs/ovary_markers.yaml")
             seurat_score_markers(marker_notebook, marker_yaml, seurat_rds)
+        }
+
+        if(params.subcluster_nb){
+            subcluster_notebook = file("${projectDir}/notebooks/TEST_roi_3_marker_scores_subcluster_oocyte_seurat_clusters.Rmd")
+            annotation_file = file("${projectDir}/refs/follicle_annotations.csv")
+            marker_yaml = file("${projectDir}/refs/ovary_markers.yaml")
+            seurat_subcluster_notebook(subcluster_notebook, marker_yaml, annotation_file, seurat_rds)
         }
 }
