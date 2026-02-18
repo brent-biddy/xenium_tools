@@ -32,7 +32,7 @@ From: bioconductor/bioconductor_docker:3.21
         options(repos = c(CRAN = "https://cloud.r-project.org"))
         ncpus <- parallel::detectCores()
         
-        install.packages(c("BiocManager", "remotes", "IRkernel"), Ncpus = ncpus)
+        install.packages(c("BiocManager", "remotes", "IRkernel", "pals"), Ncpus = ncpus)
         remotes::install_version("arrow", version = "21.0.0", upgrade = "never", Ncpus = ncpus)
         BiocManager::install(c("Seurat", "SeuratObject", "Signac", "patchwork", 
                                "data.table", "dplyr", "argparse", "R.utils"),

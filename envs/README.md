@@ -72,7 +72,7 @@ singularity sign images/seurat.sif
 singularity push images/seurat.sif library://YOUR_USERNAME/xenium_tools/seurat:latest
 
 # Example:
-# singularity push images/seurat.sif library://bbiddy/xenium_tools/seurat:latest
+# singularity push images/seurat.sif library://babiddy/xenium_tools/seurat:latest
 ```
 
 ### 4. Update Nextflow Config
