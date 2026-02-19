@@ -1,0 +1,89 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-verify-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f envs/Dockerfile.seurat \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }} \
+            envs/
+
+      - name: Verify R packages
+        run: |
+          docker run --rm \
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest \
+            Rscript -e '
+              pkgs <- c(
+                "Seurat", "SeuratObject", "Signac",
+                "patchwork", "data.table", "dplyr",
+                "argparse", "R.utils", "arrow",
+                "IRkernel", "pals"
+              )
+              failed <- pkgs[!sapply(pkgs, requireNamespace, quietly = TRUE)]
+              if (length(failed) > 0) {
+                stop(paste("Failed to load R packages:", paste(failed, collapse = ", ")))
+              }
+              message("All R packages verified successfully.")
+            '
+
+      - name: Verify Python packages
+        run: |
+          docker run --rm \
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest \
+            python3 -c "
+          import sys
+          import importlib.util
+
+          packages = {
+              'nbconvert': 'nbconvert',
+              'ipykernel': 'ipykernel',
+              'matplotlib': 'matplotlib',
+              'jupyter_core': 'jupyter (core)',
+          }
+
+          failed = [
+              label for mod, label in packages.items()
+              if importlib.util.find_spec(mod) is None
+          ]
+
+          if failed:
+              print(f'Failed to find Python packages: {failed}', file=sys.stderr)
+              sys.exit(1)
+
+          print('All Python packages verified successfully.')
+          "
+
+      - name: Push to Docker Hub
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}
+
+      - name: Update container references in nextflow.config
+        run: |
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}"
+          sed -i "s|process.container = '.*'|process.container = '${IMAGE}'|g" nextflow.config
+
+      - name: Commit updated nextflow.config
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nextflow.config
+          git commit -m "ci: update container to ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}"
+          git push

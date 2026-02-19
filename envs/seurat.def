@@ -3,139 +3,46 @@ From: bioconductor/bioconductor_docker:3.21
 
 %labels
     Author Brent Biddy
-    Email your.email@institution.edu
     Version 1.0.0
     Description Seurat environment for Xenium spatial transcriptomics analysis
-    Base bioconductor/bioconductor_docker:3.21
-
-%help
-    This container provides an R environment with Seurat and dependencies
-    for processing 10x Genomics Xenium spatial transcriptomics data.
-    
-    Included packages:
-    - Seurat, SeuratObject (single-cell/spatial RNA-seq analysis)
-    - Signac (chromatin accessibility analysis)
-    - patchwork (plot composition)
-    - data.table, dplyr (data manipulation)
-    - argparse (command-line argument parsing)
-    - R.utils (utilities)
-    - arrow (Apache Arrow for data interchange)
-    - IRkernel (Jupyter R kernel)
-    - nbconvert (Jupyter notebook conversion)
-    
-    Usage:
-        singularity exec seurat.sif Rscript your_script.R
-        singularity exec seurat.sif jupyter nbconvert notebook.ipynb
 
 %environment
-    # Set R library paths
     export R_LIBS_USER=/usr/local/lib/R/site-library
-    export R_LIBS=/usr/local/lib/R/site-library
-    
-    # Prevent R from asking about personal library
     export R_LIBS_SITE=/usr/local/lib/R/site-library
-    
-    # Set Jupyter paths
     export JUPYTER_PATH=/usr/local/share/jupyter
     export JUPYTER_CONFIG_DIR=/usr/local/etc/jupyter
-    
-    # Improve reproducibility
     export R_REMOTES_NO_ERRORS_FROM_WARNINGS=true
     export RETICULATE_PYTHON=/usr/bin/python3
 
 %post
-    # Update system packages
-    apt-get update && apt-get install -y \
-        libhdf5-dev \
-        libgeos-dev \
-        libproj-dev \
-        libudunits2-dev \
-        libgdal-dev \
-        libglpk-dev \
-        pandoc \
-        && rm -rf /var/lib/apt/lists/*
+    set -e
     
-    # Install Python packages for Jupyter
-    pip3 install --no-cache-dir \
-        nbconvert \
-        jupyter \
-        ipykernel \
-        matplotlib \
-        --break-system-packages
+    # Install system dependencies
+    apt-get update && apt-get install -y --no-install-recommends \
+        libhdf5-dev libgeos-dev libproj-dev libudunits2-dev \
+        libgdal-dev libglpk-dev pandoc && \
+        rm -rf /var/lib/apt/lists/*
     
-    # Install R packages with error handling
-    R --slave --no-save --no-restore-history -e "\
-        # Set CRAN mirror
-        options(repos = c(CRAN = 'https://cloud.r-project.org')); \
-        
-        # Install core packages
-        install.packages(c('BiocManager', 'remotes', 'IRkernel'), \
-                        Ncpus = parallel::detectCores()); \
-        
-        # Install specific arrow version for compatibility
-        remotes::install_version(package = 'arrow', \
-                                version = '21.0.0', \
-                                upgrade = 'never', \
-                                Ncpus = parallel::detectCores()); \
-        
-        # Install Bioconductor packages
-        BiocManager::install(c('Seurat', 'SeuratObject', 'Signac', \
-                              'patchwork', 'data.table', 'dplyr', \
-                              'argparse', 'R.utils'), \
-                            update = FALSE, \
-                            ask = FALSE, \
-                            Ncpus = parallel::detectCores()); \
-        
-        # Install IRkernel for Jupyter
-        IRkernel::installspec(name = 'ir', \
-                             displayname = 'R (Seurat)', \
-                             user = FALSE); \
-        
-        # Verify installations
-        packages <- c('Seurat', 'SeuratObject', 'Signac', 'patchwork', \
-                     'data.table', 'dplyr', 'argparse', 'R.utils', 'arrow', 'IRkernel'); \
-        installed <- sapply(packages, requireNamespace, quietly = TRUE); \
-        if (!all(installed)) { \
-            stop('Not all required packages were installed successfully'); \
-        } else { \
-            cat('All required packages installed successfully\n'); \
-            cat('Package versions:\n'); \
-            for (pkg in packages) { \
-                cat(sprintf('%s: %s\n', pkg, packageVersion(pkg))); \
-            } \
-        }"
+    # Install Python packages
+    pip3 install --no-cache-dir --break-system-packages \
+        nbconvert jupyter ipykernel matplotlib
     
-    # Clean up to reduce image size
+    # Install R packages
+    R --slave -e '
+        options(repos = c(CRAN = "https://cloud.r-project.org"))
+        ncpus <- parallel::detectCores()
+        
+        install.packages(c("BiocManager", "remotes", "IRkernel", "pals"), Ncpus = ncpus)
+        remotes::install_version("arrow", version = "21.0.0", upgrade = "never", Ncpus = ncpus)
+        BiocManager::install(c("Seurat", "SeuratObject", "Signac", "patchwork", 
+                               "data.table", "dplyr", "argparse", "R.utils"),
+                            update = FALSE, ask = FALSE, Ncpus = ncpus)
+        IRkernel::installspec(name = "ir", displayname = "R (Seurat)", user = FALSE)
+        
+        pkgs <- c("Seurat", "SeuratObject", "Signac", "arrow", "IRkernel")
+        if (!all(sapply(pkgs, requireNamespace, quietly = TRUE))) {
+            stop("Package installation failed")
+        }
+    '
+    
     apt-get clean
-    
-%runscript
-    # Default action when container is run
-    exec R "$@"
-
-%test
-    # Verify the container works correctly
-    echo "Testing R installation..."
-    R --version
-    
-    echo "Testing Python installation..."
-    python3 --version
-    
-    echo "Testing Jupyter..."
-    jupyter --version
-    
-    echo "Testing nbconvert..."
-    jupyter nbconvert --version
-    
-    echo "Testing R packages..."
-    R --slave --no-save --no-restore-history -e "\
-        packages <- c('Seurat', 'SeuratObject', 'Signac', 'patchwork', \
-                     'data.table', 'dplyr', 'argparse', 'R.utils', 'arrow', 'IRkernel'); \
-        for (pkg in packages) { \
-            if (!requireNamespace(pkg, quietly = TRUE)) { \
-                stop(sprintf('Package %s not found', pkg)); \
-            } else { \
-                cat(sprintf('✓ %s: %s\n', pkg, packageVersion(pkg))); \
-            } \
-        }"
-    
-    echo "All tests passed!"
