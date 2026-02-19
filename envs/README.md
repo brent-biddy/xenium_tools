@@ -106,14 +106,7 @@ process.container = 'library://<sylabs-username>/<collection>/seurat:latest'
 
 This option is intended for HPC environments where Docker is not available and outbound internet access is restricted or pulling from a registry is not permitted. Build the `.sif` image on a machine with internet access using the steps in Option 2, transfer the file to your HPC, and reference it by path.
 
-After building and transferring `images/seurat.sif`, run Nextflow using the local file path instead of a registry URI. Override `process.container` at the command line:
-
-```bash
-nextflow run main.nf --samplesheet samples.csv -profile singularity \
-    --container /full/path/to/envs/images/seurat.sif
-```
-
-Alternatively, temporarily edit the singularity profile in `nextflow.config` to point to the local path:
+After building and transferring `seurat.sif`, edit the singularity profile in `nextflow.config` to point to the local path:
 
 ```groovy
 singularity {
