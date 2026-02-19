@@ -106,7 +106,7 @@ process.container = 'library://<sylabs-username>/<collection>/seurat:latest'
 
 This option is intended for HPC environments where Docker is not available and outbound internet access is restricted or pulling from a registry is not permitted. Build the `.sif` image on a machine with internet access using the steps in Option 2, transfer the file to your HPC, and reference it by path.
 
-After building and transferring `seurat.sif`, edit the singularity profile in `nextflow.config` to point to the local path:
+After building and transferring `images/seurat.sif`, edit the singularity profile in `nextflow.config` to point to the local path:
 
 ```groovy
 singularity {
@@ -158,3 +158,23 @@ nextflow run main.nf --samplesheet samples.csv -profile oscer
 - [Singularity Documentation](https://sylabs.io/docs/)
 - [Sylabs Cloud](https://cloud.sylabs.io/)
 - [Apptainer Documentation](https://apptainer.org/docs/)
+
+---
+
+---
+
+## CI/CD: Manual Builds via GitHub Actions
+
+The workflow at `.github/workflows/build-docker.yml` can be triggered manually from the GitHub Actions UI via the "Run workflow" button. It builds, verifies, and pushes the Docker image to Docker Hub. Package verification runs inside the built container before any push occurs, so a broken build will never reach Docker Hub.
+
+### Required GitHub Secrets and Variables
+
+Before the action can run, configure the following in your repository under **Settings → Secrets and variables → Actions**:
+
+| Type | Name | Value |
+|---|---|---|
+| Secret | `DOCKERHUB_USERNAME` | Your Docker Hub username |
+| Secret | `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://app.docker.com/settings/personal-access-tokens) (not your password) |
+| Variable | `DOCKERHUB_IMAGE` | The image name to push to (e.g. `xenium_tools_seurat`) |
+
+Once set, trigger the workflow from **Actions → Build and Push Docker Image → Run workflow**. The image is tagged with both `latest` and the commit SHA, and `nextflow.config` is automatically updated with the new image reference and committed back to the repo.
