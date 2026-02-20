@@ -31,6 +31,14 @@ cd envs/
 docker build -f Dockerfile.seurat -t <dockerhub-username>/<image-name>:latest .
 ```
 
+> **Note:** If you hit GitHub API rate limits when installing R packages from GitHub during the build, you can pass a personal access token as a build secret. The token is only available during the build and is never baked into the image:
+> ```bash
+> GITHUB_PAT=<your-token> docker build \
+>     --secret id=gh_token,env=GITHUB_PAT \
+>     -f Dockerfile.seurat \
+>     -t <dockerhub-username>/<image-name>:latest .
+> ```
+
 ### 2. Log in to Docker Hub
 
 ```bash
@@ -161,11 +169,11 @@ nextflow run main.nf --samplesheet samples.csv -profile oscer
 
 ---
 
----
-
 ## CI/CD: Manual Builds via GitHub Actions
 
-The workflow at `.github/workflows/build-docker.yml` can be triggered manually from the GitHub Actions UI via the "Run workflow" button. It builds, verifies, and pushes the Docker image to Docker Hub. Package verification runs inside the built container before any push occurs, so a broken build will never reach Docker Hub.
+The workflow at `.github/workflows/build-docker.yml` is triggered manually from the GitHub Actions UI via the "Run workflow" button. It builds the Docker image and pushes it to Docker Hub, tagging it with both `latest` and the commit SHA. After a successful push, `nextflow.config` is automatically updated with the new SHA-tagged image reference and committed back to the repo.
+
+Layer caching is enabled via the GitHub Actions cache, so rebuilds that don't change early Dockerfile layers (base image, system dependencies) will be significantly faster.
 
 ### Required GitHub Secrets and Variables
 
@@ -175,6 +183,7 @@ Before the action can run, configure the following in your repository under **Se
 |---|---|---|
 | Secret | `DOCKERHUB_USERNAME` | Your Docker Hub username |
 | Secret | `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://app.docker.com/settings/personal-access-tokens) (not your password) |
+| Secret | `GH_TOKEN` | A GitHub [personal access token](https://github.com/settings/tokens) (optional — used to avoid GitHub API rate limits when installing R packages from GitHub during the build) |
 | Variable | `DOCKERHUB_IMAGE` | The image name to push to (e.g. `xenium_tools_seurat`) |
 
-Once set, trigger the workflow from **Actions → Build and Push Docker Image → Run workflow**. The image is tagged with both `latest` and the commit SHA, and `nextflow.config` is automatically updated with the new image reference and committed back to the repo.
+Once set, trigger the workflow from **Actions → Build and Push Docker Image → Run workflow**.

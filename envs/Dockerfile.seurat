@@ -5,42 +5,32 @@ ENV R_LIBS_USER=/usr/local/lib/R/site-library \
     JUPYTER_PATH=/usr/local/share/jupyter \
     JUPYTER_CONFIG_DIR=/usr/local/etc/jupyter \
     R_REMOTES_NO_ERRORS_FROM_WARNINGS=true \
-    RETICULATE_PYTHON=/usr/bin/python3 \
-    PIP_BREAK_SYSTEM_PACKAGES=1 \
-    DEBIAN_FRONTEND=noninteractive
-SHELL ["/bin/bash", "-c"]
-RUN set -euxo pipefail \
- && apt-get update \
- && apt-get install -y --no-install-recommends \
-      libhdf5-dev \
-      libgeos-dev \
-      libproj-dev \
-      libudunits2-dev \
-      libgdal-dev \
-      libglpk-dev \
-      pandoc \
- && rm -rf /var/lib/apt/lists/* \
- && python3 -m pip install --no-cache-dir \
-      nbconvert \
-      jupyter \
-      ipykernel \
-      matplotlib \
- && R --slave --no-save --no-restore-history -e "\
-    options(repos = c(CRAN = 'https://cloud.r-project.org')); \
-    install.packages(c('BiocManager','remotes','IRkernel', 'pals'), \
-                     Ncpus = parallel::detectCores()); \
-    remotes::install_version(package = 'arrow', version = '21.0.0', \
-                             upgrade = 'never', \
-                             Ncpus = parallel::detectCores()); \
-    BiocManager::install(c('Seurat','SeuratObject','Signac', \
-                           'patchwork','data.table','dplyr', \
-                           'argparse','R.utils','glmGamPoi'), \
-                         update = FALSE, ask = FALSE, \
-                         Ncpus = parallel::detectCores()); \
-    remotes::install_github(c('satijalab/seurat-data','satijalab/azimuth', \
-                              'satijalab/seurat-wrappers','immunogenomics/presto', \
-                              'bnprks/BPCells/r'), \
-                            quiet = TRUE, upgrade = 'never'); \
-    IRkernel::installspec(name = 'ir', displayname = 'R (Seurat)', user = FALSE); \
- " \
- && apt-get clean
+    RETICULATE_PYTHON=/usr/bin/python3
+
+# Post section
+RUN --mount=type=secret,id=gh_token,env=GITHUB_PAT,required=false \
+    set -e && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        libhdf5-dev libgeos-dev libproj-dev libudunits2-dev \
+        libgdal-dev libglpk-dev pandoc && \
+    rm -rf /var/lib/apt/lists/* && \
+    \
+    # Install Python packages
+    pip3 install --no-cache-dir --break-system-packages \
+        nbconvert jupyter ipykernel matplotlib && \
+    \
+    # Install R packages
+    R --slave -e ' \
+        options(repos = c(CRAN = "https://cloud.r-project.org")); \
+        ncpus <- parallel::detectCores(); \
+        install.packages(c("BiocManager", "remotes", "IRkernel", "pals"), Ncpus = ncpus); \
+        remotes::install_version("arrow", version = "21.0.0", upgrade = "never", Ncpus = ncpus); \
+        BiocManager::install(c("Seurat", "SeuratObject", "Signac", "patchwork", \
+                               "data.table", "dplyr", "argparse", "R.utils"), \
+                             update = FALSE, ask = FALSE, Ncpus = ncpus); \
+        IRkernel::installspec(name = "ir", displayname = "R (Seurat)", user = FALSE); \
+        pkgs <- c("Seurat", "SeuratObject", "Signac", "arrow", "IRkernel"); \
+        if (!all(sapply(pkgs, requireNamespace, quietly = TRUE))) { \
+            stop("Package installation failed") \
+        }' && \
+    apt-get clean
