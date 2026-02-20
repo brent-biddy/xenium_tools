@@ -89,33 +89,6 @@ process xenium_qc_plots {
     """
 }
 
-process bp_cells_clustering {
-
-    tag "${sample_name}"
-
-    time = { 15.m * (1 + task.attempt)}
-
-    input:
-    path (notebook_path)
-    tuple val(sample_name), path(xenium_output)
-
-    output:
-    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
-    tuple val(sample_name), path("clustering_results.csv"), emit: cluster_csv, optional: true
-
-    publishDir "${params.output_path}/results/${sample_name}/bp_cells/", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_bp_cells_clustering_report.html" }, mode: 'copy'
-    publishDir "${params.output_path}/results/${sample_name}/bp_cells/", pattern: "clustering_results.csv", saveAs: { "${sample_name}_bp_cells_clustering_results.csv" }, mode: 'copy'
-
-    script:
-    """
-    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
-    """
-    stub:
-    """
-    touch jupyter_notebook.html
-    """
-}
-
 
 workflow OBJECT_CREATION {
     take:
@@ -123,16 +96,18 @@ workflow OBJECT_CREATION {
     main:
         
         create_seurat_object(sample_info)
-
+        
         create_bpcells_seurat_object(sample_info)
 
         notebook_file = file("${projectDir}/notebooks/xenium_qc_plots.ipynb")
         xenium_qc_plots(notebook_file, create_seurat_object.out.full_rds)
 
-        if(params.bp_clustering){
-            bp_clustering_nb = file("${projectDir}/notebooks/bp_cells_clustering.ipynb")
-            bp_cells_clustering(bp_clustering_nb, sample_info)
+        sample_info = sample_info.join(create_seurat_object.out.full_rds)
+        sample_info = sample_info.join(create_bpcells_seurat_object.out.full_rds)
+
+        sample_info = sample_info.flatMap{
+            tuple(id: it[0], xenium_dir: it[1], seurat_rds: it[2], bpcells_rds: it[3])
         }
         
-        SEURAT_OBJ(create_seurat_object.out.full_rds)
+        SEURAT_OBJ(sample_info)
 }
