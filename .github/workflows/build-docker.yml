@@ -1,4 +1,25 @@
-- name: Build and push Docker image
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-verify-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: envs/
@@ -11,3 +32,17 @@
             gh_token=${{ secrets.GH_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Update container reference in nextflow.config
+        run: |
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}"
+          sed -i "s|process.container = '.*'|process.container = '${IMAGE}'|g" nextflow.config
+
+      - name: Commit updated nextflow.config
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nextflow.config
+          git commit -m "ci: update container to ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}"
+          git pull --rebase
+          git push
