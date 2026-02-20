@@ -142,37 +142,28 @@ workflow SEURAT {
 
     main:
 
-        if(params.cluster){
-            sample_info.map{
-                tuple(it.id, it.seurat_rds)
-            }.set {sketch_input}
+        seurat_rds = sample_info.map{ tuple(it.id, it.seurat_rds) } // [sample_id, seurat_rds]
+        bpcells_rds = sample_info.map{ tuple(it.id, it.bpcells_rds) } // [sample_id, bpcells_rds]
+        xenium_dir = sample_info.map{ tuple(it.id, it.xenium_dir) } // [sample_id, xenium_dir]
 
-            sketch_cluster_seurat(sketch_input)
+        if(params.cluster){
+            sketch_cluster_seurat(seurat_rds)
         }
         
         if(params.cluster_full){
-            sample_info.map{
-                tuple(it.id, it.seurat_rds)
-            }.set{ cluster_input }
-            cluster_seurat(cluster_input)
+            cluster_seurat(seurat_rds)
             cluster_notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
             seurat_cluster_plots(cluster_notebook, cluster_seurat.out.rds)
         }
 
         if(params.score_markers){
-            sample_info.map{
-                tuple(it.id, it.seurat_rds)
-            }.set{ marker_input }
             marker_notebook = file("${projectDir}/notebooks/marker_scores.ipynb")
             marker_yaml = file("${projectDir}/refs/ovary_markers.yaml")
-            seurat_score_markers(marker_notebook, marker_yaml, marker_input)
+            seurat_score_markers(marker_notebook, marker_yaml, seurat_rds)
         }
 
         if(params.bp_clustering){
-            sample_info.map{
-                tuple(it.id, it.xenium_dir)
-            }.set{ bp_cluster_input }
             bp_clustering_nb = file("${projectDir}/notebooks/bp_cells_clustering.ipynb")
-            bp_cells_clustering(bp_clustering_nb, bp_cluster_input)
+            bp_cells_clustering(bp_clustering_nb, xenium_dir)
         }
 }
