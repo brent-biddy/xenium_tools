@@ -27,7 +27,7 @@ RUN set -euxo pipefail \
       matplotlib \
  && R --slave --no-save --no-restore-history -e "\
     options(repos = c(CRAN = 'https://cloud.r-project.org')); \
-    install.packages(c('BiocManager','remotes','IRkernel'), \
+    install.packages(c('BiocManager','remotes','IRkernel', 'pals'), \
                      Ncpus = parallel::detectCores()); \
     remotes::install_version(package = 'arrow', version = '21.0.0', \
                              upgrade = 'never', \
