@@ -106,24 +106,70 @@ process seurat_score_markers {
     """
 }
 
+process bp_cells_clustering {
+
+    tag "${sample_name}"
+
+    time = { 15.m * (1 + task.attempt)}
+
+    input:
+    path (notebook_path)
+    tuple val(sample_name), path(xenium_output)
+
+    output:
+    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
+    tuple val(sample_name), path("clustering_results.csv"), emit: cluster_csv, optional: true
+
+    publishDir "${params.output_path}/results/${sample_name}/bp_cells/", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_bp_cells_clustering_report.html" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}/bp_cells/", pattern: "clustering_results.csv", saveAs: { "${sample_name}_bp_cells_clustering_results.csv" }, mode: 'copy'
+
+    script:
+    """
+    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
+    """
+    stub:
+    """
+    touch jupyter_notebook.html
+    """
+}
+
 workflow SEURAT {
     take:
-        seurat_rds
+        sample_info
 
     main:
+
         if(params.cluster){
-            sketch_cluster_seurat(seurat_rds)
+            sample_info.map{
+                tuple(it.id, it.seurat_rds)
+            }.set {sketch_input}
+
+            sketch_cluster_seurat(sketch_input)
         }
         
         if(params.cluster_full){
-            cluster_seurat(seurat_rds)
+            sample_info.map{
+                tuple(it.id, it.seurat_rds)
+            }.set{ cluster_input }
+            cluster_seurat(cluster_input)
             cluster_notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
             seurat_cluster_plots(cluster_notebook, cluster_seurat.out.rds)
         }
 
         if(params.score_markers){
+            sample_info.map{
+                tuple(it.id, it.seurat_rds)
+            }.set{ marker_input }
             marker_notebook = file("${projectDir}/notebooks/marker_scores.ipynb")
             marker_yaml = file("${projectDir}/refs/ovary_markers.yaml")
-            seurat_score_markers(marker_notebook, marker_yaml, seurat_rds)
+            seurat_score_markers(marker_notebook, marker_yaml, marker_input)
+        }
+
+        if(params.bp_clustering){
+            sample_info.map{
+                tuple(it.id, it.xenium_dir)
+            }.set{ bp_cluster_input }
+            bp_clustering_nb = file("${projectDir}/notebooks/bp_cells_clustering.ipynb")
+            bp_cells_clustering(bp_clustering_nb, bp_cluster_input)
         }
 }
