@@ -106,11 +106,46 @@ process seurat_score_markers {
     """
 }
 
+process bp_cells_clustering {
+
+    tag "${sample_name}"
+
+    time { 2.h * (1 + task.attempt)}
+    errorStrategy { task.attempt < 3 ? 'retry' : 'ignore'}
+
+    stageInMode 'copy'
+
+    input:
+    path (notebook_path)
+    tuple val(sample_name), path(xenium_output)
+
+    output:
+    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
+    tuple val(sample_name), path("clustering_results.csv"), emit: cluster_csv, optional: true
+
+    publishDir "${params.output_path}/results/${sample_name}/bp_cells/", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_bp_cells_clustering_report.html" }, mode: 'copy'
+    publishDir "${params.output_path}/results/${sample_name}/bp_cells/", pattern: "clustering_results.csv", saveAs: { "${sample_name}_bp_cells_clustering_results.csv" }, mode: 'copy'
+
+    script:
+    """
+    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
+    """
+    stub:
+    """
+    touch jupyter_notebook.html
+    """
+}
+
 workflow SEURAT {
     take:
-        seurat_rds
+        sample_info
 
     main:
+
+        seurat_rds = sample_info.map{ tuple(it.id, it.seurat_rds) } // [sample_id, seurat_rds]
+        bpcells_rds = sample_info.map{ tuple(it.id, it.bpcells_rds) } // [sample_id, bpcells_rds]
+        xenium_dir = sample_info.map{ tuple(it.id, it.xenium_dir) } // [sample_id, xenium_dir]
+
         if(params.cluster){
             sketch_cluster_seurat(seurat_rds)
         }
@@ -125,5 +160,10 @@ workflow SEURAT {
             marker_notebook = file("${projectDir}/notebooks/marker_scores.ipynb")
             marker_yaml = file("${projectDir}/refs/ovary_markers.yaml")
             seurat_score_markers(marker_notebook, marker_yaml, seurat_rds)
+        }
+
+        if(params.bp_clustering){
+            bp_clustering_nb = file("${projectDir}/notebooks/bp_cells_clustering.ipynb")
+            bp_cells_clustering(bp_clustering_nb, xenium_dir)
         }
 }

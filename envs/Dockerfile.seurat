@@ -1,11 +1,5 @@
 FROM bioconductor/bioconductor_docker:3.21
 
-# Labels
-LABEL Author="Brent Biddy" \
-      Version="1.0.0" \
-      Description="Seurat environment for Xenium spatial transcriptomics analysis"
-
-# Environment variables
 ENV R_LIBS_USER=/usr/local/lib/R/site-library \
     R_LIBS_SITE=/usr/local/lib/R/site-library \
     JUPYTER_PATH=/usr/local/share/jupyter \
