@@ -112,6 +112,8 @@ process bp_cells_clustering {
 
     time = { 15.m * (1 + task.attempt)}
 
+    stageInMode 'copy'
+
     input:
     path (notebook_path)
     tuple val(sample_name), path(xenium_output)
