@@ -14,7 +14,8 @@ ENV R_LIBS_USER=/usr/local/lib/R/site-library \
     RETICULATE_PYTHON=/usr/bin/python3
 
 # Post section
-RUN set -e && \
+RUN --mount=type=secret,id=gh_token,env=GITHUB_PAT,required=false \
+    set -e && \
     apt-get update && apt-get install -y --no-install-recommends \
         libhdf5-dev libgeos-dev libproj-dev libudunits2-dev \
         libgdal-dev libglpk-dev pandoc && \

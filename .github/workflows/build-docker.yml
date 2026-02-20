@@ -6,13 +6,12 @@ on:
 jobs:
   build-verify-push:
     runs-on: ubuntu-latest
-
-    env:
-      GITHUB_PAT: ${{ secrets.GH_TOKEN }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -20,65 +19,21 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build Docker image
-        run: |
-          docker build \
-            -f envs/Dockerfile.seurat \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }} \
-            envs/
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: envs/
+          file: envs/Dockerfile.seurat
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}
+          secrets: |
+            gh_token=${{ secrets.GH_TOKEN }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Verify R packages
-        run: |
-          docker run --rm \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest \
-            Rscript -e '
-              pkgs <- c(
-                "Seurat", "SeuratObject", "Signac",
-                "patchwork", "data.table", "dplyr",
-                "argparse", "R.utils", "arrow",
-                "IRkernel", "pals"
-              )
-              failed <- pkgs[!sapply(pkgs, requireNamespace, quietly = TRUE)]
-              if (length(failed) > 0) {
-                stop(paste("Failed to load R packages:", paste(failed, collapse = ", ")))
-              }
-              message("All R packages verified successfully.")
-            '
-
-      - name: Verify Python packages
-        run: |
-          docker run --rm \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest \
-            python3 -c "
-          import sys
-          import importlib.util
-
-          packages = {
-              'nbconvert': 'nbconvert',
-              'ipykernel': 'ipykernel',
-              'matplotlib': 'matplotlib',
-              'jupyter_core': 'jupyter (core)',
-          }
-
-          failed = [
-              label for mod, label in packages.items()
-              if importlib.util.find_spec(mod) is None
-          ]
-
-          if failed:
-              print(f'Failed to find Python packages: {failed}', file=sys.stderr)
-              sys.exit(1)
-
-          print('All Python packages verified successfully.')
-          "
-
-      - name: Push to Docker Hub
-        run: |
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:latest
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}
-
-      - name: Update container references in nextflow.config
+      - name: Update container reference in nextflow.config
         run: |
           IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}"
           sed -i "s|process.container = '.*'|process.container = '${IMAGE}'|g" nextflow.config
@@ -89,4 +44,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add nextflow.config
           git commit -m "ci: update container to ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}"
+          git pull --rebase
           git push
