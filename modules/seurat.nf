@@ -110,7 +110,7 @@ process bp_cells_clustering {
 
     tag "${sample_name}"
 
-    time { 2.h * (1 + task.attempt)}
+    // time { 2.h * (1 + task.attempt)}
     errorStrategy { task.attempt < 3 ? 'retry' : 'ignore'}
 
     stageInMode 'copy'
