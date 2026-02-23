@@ -40,7 +40,7 @@ workflow {
 }
 
 workflow.onComplete {
-    println """
+    def summary = """
     Pipeline execution summary
     ---------------------------
     Completed at : ${workflow.complete}
@@ -51,9 +51,32 @@ workflow.onComplete {
     Exit status  : ${workflow.exitStatus}
     Error report : ${workflow.errorReport ?: '-'}
     """.stripIndent()
+
+    println summary
+
+    if (params.email) {
+        def subject = workflow.success
+            ? "[xenium_tools] SUCCESS: ${workflow.runName}"
+            : "[xenium_tools] FAILED: ${workflow.runName}"
+
+        sendMail(
+            to:      params.email,
+            subject: subject,
+            body:    summary
+        )
+    }
 }
 
 workflow.onError {
-    println "Oops... Pipeline execution stopped with the following message: ${workflow.errorMessage}"
+    def msg = "Oops... Pipeline execution stopped with the following message: ${workflow.errorMessage}"
+    println msg
+
+    if (params.email) {
+        sendMail(
+            to:      params.email,
+            subject: "[xenium_tools] ERROR: ${workflow.runName}",
+            body:    msg
+        )
+    }
 }
 
