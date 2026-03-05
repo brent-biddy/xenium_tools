@@ -2,6 +2,7 @@
 
 include { OBJECT_CREATION } from "${projectDir}/modules/object_creation.nf"
 include { SEURAT as SEURAT_RDS } from "${projectDir}/modules/seurat.nf"
+include { TRANSCRIPTS } from "${projectDir}/modules/point_process.nf"
 
 
 // Workflow block
@@ -36,6 +37,7 @@ workflow {
 
     OBJECT_CREATION(sample_info.dir)
     SEURAT_RDS(sample_info.seurat)
+    TRANSCRIPTS(sample_info)
 
 }
 

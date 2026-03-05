@@ -1,0 +1,594 @@
+---
+title: "Point Pattern Analysis – Univariate Methods for Imaging-Based Data"
+author: "Adapted from Robinson Lab PASTA (robinsonlabuzh.github.io/pasta)"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-tools: true
+    self-contained: true
+params:
+  # Path to your SpatialExperiment .rds file
+  spe_path: "../data/spe.rds"
+  # Column in colData() that identifies images/sections (e.g. sample_id, z_stack)
+  image_col: "sample_id"
+  # Which image IDs to include in the analysis (list of strings)
+  image_ids: ["-0.09", "0.01", "0.21"]
+  # Column in colData() containing cell type / categorical mark labels
+  mark_col: "cluster_id"
+  # Cell type of interest for univariate analysis
+  celltype: "OD Mature"
+  # Additional grouping variables used in calcMetricPerFov (besides image_col)
+  by_vars: ["Animal_ID", "sample_id"]
+  # Genes to use for continuous-mark analysis (must be in rownames of assay)
+  genes: ["Slc18a2", "Esr1", "Pgr"]
+  # Image ID to use for single-image analyses (LISA, fPCA, continuous marks)
+  focal_image: "0.01"
+execute:
+  warning: false
+  message: false
+  cache: false
+---
+
+```{r setup}
+#| include: false
+library(SpatialExperiment)
+library(spatialFDA)
+library(spatstat)
+library(sosta)
+library(ggplot2)
+library(patchwork)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(magrittr)
+library(refund)
+
+# ── Helper: convert SpatialExperiment to spatstat ppp ───────────────────────
+# This mimics the .ppp() utility from utils.R in the original PASTA repo.
+# Adjust if your coordinate column names differ (default: x, y).
+spe_to_ppp <- function(spe_obj, mark_col = "cluster_id") {
+  coords <- spatialCoords(spe_obj)
+  x <- coords[, 1]
+  y <- coords[, 2]
+  marks_vec <- factor(colData(spe_obj)[[mark_col]])
+  ppp(x, y, range(x), range(y), marks = marks_vec)
+}
+```
+
+## Overview
+
+This notebook applies **univariate point pattern analysis** to imaging-based spatial omics data.  
+It is a generalized version of the [PASTA vignette](https://robinsonlabuzh.github.io/pasta/01-imaging-univar-ppSOD.html) by the Robinson Lab, UZH.
+
+**What this notebook covers:**
+
+- Observation window estimation (Ripley–Rasson and density-based via `sosta`)
+- Correlation metrics: Ripley's *K*, *L*-function, pair correlation function (homogeneous, inhomogeneous, locally scaled)
+- Local indicators of spatial association (LISA *L*-function) and functional PCA
+- Spacing metrics: *G*, *F*, *J* functions (homogeneous and inhomogeneous), nearest-neighbour orientation
+- Continuous mark summary functions: mark correlation and mark-weighted *K*
+
+**Key parameters** (set in the YAML `params` block above):
+
+| Parameter | Current value | Description |
+|-----------|---------------|-------------|
+| `spe_path` | `{r params$spe_path}` | Path to `SpatialExperiment` RDS |
+| `image_col` | `{r params$image_col}` | Column identifying images |
+| `image_ids` | `{r paste(params$image_ids, collapse=", ")}` | Images to analyse |
+| `mark_col` | `{r params$mark_col}` | Categorical mark column |
+| `celltype` | `{r params$celltype}` | Cell type of interest |
+| `focal_image` | `{r params$focal_image}` | Image for single-image analyses |
+| `genes` | `{r paste(params$genes, collapse=", ")}` | Genes for continuous marks |
+
+---
+
+# Part 1 – Categorical Marks
+
+## 1.1 Load data and build point patterns
+
+```{r load-data}
+spe <- readRDS(params$spe_path)
+
+# Select images of interest
+spe_sub <- spe[, colData(spe)[[params$image_col]] %in% params$image_ids]
+
+# Build a named list of ppp objects (one per image), marks = cell type label
+build_ppp_list <- function(image_id, spe_obj, image_col, mark_col) {
+  sub <- spe_obj[, colData(spe_obj)[[image_col]] == image_id]
+  spe_to_ppp(sub, mark_col = mark_col)
+}
+
+pp_raw <- lapply(params$image_ids, build_ppp_list,
+                 spe_obj = spe_sub,
+                 image_col = params$image_col,
+                 mark_col = params$mark_col)
+names(pp_raw) <- params$image_ids
+```
+
+## 1.2 Observation Windows
+
+### Ripley–Rasson convex window estimate
+
+Most often, only a subset of the full point process is observed ("window sampling"). The Ripley–Rasson estimator provides a convex approximation of the observation window.
+
+```{r ripras-windows}
+set_ripras <- function(pp_obj) {
+  Window(pp_obj) <- ripras(pp_obj)
+  pp_obj
+}
+
+# Apply Ripley-Rasson window, then split by mark (cell type)
+pp_ripras <- lapply(pp_raw, set_ripras)
+pp_ls     <- lapply(pp_ripras, split)   # list of lists: image -> celltype -> ppp
+```
+
+### Density-based window estimate (`sosta`)
+
+An alternative is to estimate the window from the spatial intensity of cells using a kernel density threshold.
+
+```{r sosta-windows, fig.width=14, fig.height=5}
+n_params <- estimateReconstructionParametersSPE(
+  spe_sub,
+  marks     = params$mark_col,
+  imageCol  = params$image_col,
+  markSelect = NULL,
+  plotHist  = FALSE
+)
+
+thres_spe <- mean(n_params$thres)
+bndw_spe  <- mean(n_params$bndw)
+
+all_structs <- reconstructShapeDensitySPE(
+  spe_sub,
+  marks     = params$mark_col,
+  imageCol  = params$image_col,
+  markSelect = NULL,
+  bndw      = bndw_spe,
+  thres     = thres_spe,
+  nCores    = 1
+)
+
+# Plot estimated windows overlaid on cell positions
+p_windows <- lapply(params$image_ids, function(img) {
+  sub_img    <- spe_sub[, colData(spe_sub)[[params$image_col]] == img]
+  structs_img <- subset(all_structs, get(params$image_col) == img)
+
+  cbind(as.data.frame(colData(sub_img)), spatialCoords(sub_img)) |>
+    ggplot(aes(x = x, y = y)) +
+    geom_point(size = 0.25) +
+    geom_sf(data = structs_img, fill = NA, color = "red",
+            inherit.aes = FALSE, linewidth = 0.8) +
+    facet_grid(reformulate(params$image_col)) +
+    theme_light() +
+    ggtitle(img)
+})
+
+wrap_plots(p_windows)
+```
+
+---
+
+## 1.3 Univariate viewpoint
+
+We compare the spatial distribution of **`r params$celltype`** across images  
+`r paste(params$image_ids, collapse = ", ")`, treating each image as an independent realisation.
+
+---
+
+## 1.4 Correlation Functions
+
+### Ripley's *K*, *L*-function, and Pair Correlation Function (homogeneous)
+
+The *K*-function counts the average number of neighbours within radius *r* per point, normalised by intensity. The *L*-function is a variance-stabilising transformation. The pair correlation function (pcf) is the derivative of *K* and shows contributions at exactly distance *r*.
+
+```{r homo-correlation, fig.width=16, fig.height=6}
+res_homo <- lapply(c("Kest", "Lest", "pcf"), function(fun) {
+  res <- calcMetricPerFov(
+    spe,
+    params$celltype,
+    subsetby = params$image_col,
+    fun      = fun,
+    marks    = params$mark_col,
+    rSeq     = NULL,
+    by       = params$by_vars
+  )
+  subset(res, get(params$image_col) %in% params$image_ids)
+})
+
+p_homo_ls <- lapply(res_homo, function(res) {
+  plotMetricPerFov(res, theo = TRUE, correction = "iso",
+                   x = "r", imageId = params$image_col,
+                   legend.position = "right")
+})
+
+p_homo <- wrap_plots(p_homo_ls, guides = "collect")
+p_homo
+```
+
+### Inhomogeneous *K*, *L*, and pcf
+
+When spatial intensity varies (inhomogeneity), the standard *K*-function is biased. The inhomogeneous versions correct for locally estimated intensity via kernel smoothing.
+
+```{r inhomo-correlation, fig.width=16, fig.height=6}
+res_inhomo <- lapply(c("Kinhom", "Linhom", "pcfinhom"), function(fun) {
+  res <- calcMetricPerFov(
+    spe,
+    params$celltype,
+    subsetby  = params$image_col,
+    fun       = fun,
+    marks     = params$mark_col,
+    rSeq      = NULL,
+    by        = params$by_vars,
+    correction = "isotropic"
+  )
+  subset(res, get(params$image_col) %in% params$image_ids)
+})
+
+p_inhomo_ls <- lapply(res_inhomo, function(res) {
+  plotMetricPerFov(res, correction = "iso", theo = TRUE,
+                   x = "r", imageId = params$image_col,
+                   legend.position = "right")
+})
+
+p_inhomo <- wrap_plots(p_inhomo_ls, guides = "collect")
+p_inhomo
+```
+
+### Locally-Scaled *K* and *L*
+
+Local scaling further accounts for cases where the point process in different sub-regions is a scaled version of a common template process.
+
+```{r scaled-correlation, fig.width=16, fig.height=6}
+res_scaled <- lapply(c("Kscaled", "Lscaled"), function(fun) {
+  res <- calcMetricPerFov(
+    spe,
+    params$celltype,
+    subsetby = params$image_col,
+    fun      = fun,
+    marks    = params$mark_col,
+    rSeq     = NULL,
+    by       = params$by_vars
+  )
+  subset(res, get(params$image_col) %in% params$image_ids)
+})
+
+p_scaled_ls <- lapply(res_scaled, function(res) {
+  plotMetricPerFov(res, correction = "iso", theo = TRUE,
+                   x = "r", imageId = params$image_col,
+                   legend.position = "right")
+})
+
+p_scaled <- wrap_plots(p_scaled_ls, guides = "collect")
+p_scaled
+```
+
+### All correlation variants combined
+
+```{r all-correlation, fig.width=16, fig.height=14}
+wrap_plots(list(p_homo, p_inhomo, p_scaled),
+           nrow = 3, guides = "collect") +
+  plot_annotation(tag_levels = "A")
+```
+
+---
+
+### Local Indicators of Spatial Association (LISA *L*-function)
+
+LISA computes the *L*-function contribution for each individual point, allowing detection of heterogeneous spatial structure within a single image.
+
+```{r lisa, fig.width=10, fig.height=5}
+focal_pp <- pp_ls[[params$focal_image]][[params$celltype]]
+
+L_lisa <- localL(focal_pp)
+df_lisa <- as.data.frame(L_lisa)
+dfm     <- reshape2::melt(df_lisa, "r")
+
+# Pick a reference radius near the middle of the range for colouring
+ref_r <- median(df_lisa$r)
+get_sel <- dfm |>
+  filter(abs(r - ref_r) == min(abs(r - ref_r)), variable != "theo") |>
+  mutate(sel = value) |>
+  select(variable, sel)
+
+dfm <- dfm |> left_join(get_sel, by = "variable")
+
+p_lisa <- ggplot(dfm, aes(x = r, y = value, group = variable, colour = sel)) +
+  geom_line() +
+  scale_color_continuous(type = "viridis") +
+  geom_vline(xintercept = ref_r, linetype = "dashed") +
+  theme_light() +
+  ggtitle(paste0("LISA L-curves – image ", params$focal_image))
+
+ppdf <- as.data.frame(pp_ripras[[params$focal_image]]) |>
+  filter(marks == params$celltype)
+ppdf$sel <- get_sel$sel
+
+q_lisa <- ggplot(ppdf, aes(x = x, y = y, colour = sel)) +
+  geom_point(size = 0.75) +
+  scale_color_continuous(type = "viridis") +
+  theme_light() +
+  ggtitle(paste0("Points coloured by LISA value at r ~ ", round(ref_r)))
+
+p_lisa | q_lisa
+```
+
+### Functional PCA of LISA Curves
+
+Functional PCA extracts the dominant modes of variation across the *n* individual LISA curves.
+
+```{r fpca, fig.width=10, fig.height=5}
+df_fdob <- asinh(df_lisa |> as.matrix() / 50) |> as.data.frame()
+
+mat <- df_fdob |>
+  select(!c(r, theo)) |>
+  t()
+
+dat <- data.frame(ID = rownames(mat))
+dat$Y   <- mat
+dat$sel <- get_sel$sel
+
+res_fpca <- functionalPCA(dat = dat, r = unique(df_fdob$r))
+
+scores_df <- as.data.frame(res_fpca$scores)
+
+p_biplot <- ggplot(scores_df, aes(scores_df[, 1], scores_df[, 2],
+                                   colour = dat$sel)) +
+  geom_point() +
+  coord_equal() +
+  theme_light() +
+  scale_color_continuous(type = "viridis") +
+  xlab("PC1") + ylab("PC2") +
+  ggtitle("fPCA biplot of LISA curves")
+
+p_biplot
+```
+
+```{r fpca-maps, fig.width=10, fig.height=5}
+p_pc1 <- ggplot(ppdf, aes(x = x, y = y, colour = res_fpca$scores[, 1])) +
+  scale_color_continuous(type = "viridis", name = "PC1 loading") +
+  geom_point(size = 0.75) + theme_light() + ggtitle("PC1 loadings on tissue")
+
+p_pc2 <- ggplot(ppdf, aes(x = x, y = y, colour = res_fpca$scores[, 2])) +
+  scale_color_continuous(type = "viridis", name = "PC2 loading") +
+  geom_point(size = 0.75) + theme_light() + ggtitle("PC2 loadings on tissue")
+
+p_pc1 | p_pc2
+```
+
+---
+
+## 1.5 Spacing Functions
+
+### Mean Nearest-Neighbour Distance (MNND)
+
+```{r mnnd, fig.width=8, fig.height=5}
+nndistance <- function(pp_obj, nk) {
+  xy <- cbind(pp_obj$x, pp_obj$y)
+  rowMeans(nndist(xy, k = nk))
+}
+
+# Use up to 3 cell types from the focal image for illustration; adjust as needed
+available_types <- names(pp_ls[[params$focal_image]])
+celltypes_plot  <- head(available_types, 3)
+
+res_nnd <- lapply(celltypes_plot, function(ct) {
+  vals <- nndistance(pp_ls[[params$focal_image]][[ct]], seq_len(15))
+  data.frame(metric = vals, type = ct)
+})
+
+res_nnd_df <- do.call(rbind, res_nnd)
+
+ggplot(res_nnd_df, aes(x = metric, col = type)) +
+  geom_density(linewidth = 1) +
+  scale_x_sqrt() +
+  theme_light() +
+  ggtitle("Sqrt of Mean Nearest-Neighbour Distance") +
+  xlab("sqrt(MNND)")
+```
+
+### *G*, *F*, and *J* Functions (homogeneous)
+
+The *G*-function is the nearest-neighbour distance distribution; *F* is the empty-space function; *J* combines both (J = 1 for CSR, J < 1 = clustering, J > 1 = regularity).
+
+```{r GFJ-homo, fig.width=16, fig.height=6}
+res_gfj <- lapply(c("Gest", "Fest", "Jest"), function(fun) {
+  res <- calcMetricPerFov(
+    spe,
+    params$celltype,
+    subsetby = params$image_col,
+    fun      = fun,
+    marks    = params$mark_col,
+    rSeq     = NULL,
+    by       = params$by_vars
+  )
+  subset(res, get(params$image_col) %in% params$image_ids)
+})
+
+p_gfj_ls <- lapply(res_gfj, function(res) {
+  plotMetricPerFov(res, correction = "rs", theo = TRUE,
+                   x = "r", imageId = params$image_col,
+                   legend.position = "right")
+})
+
+wrap_plots(p_gfj_ls, guides = "collect")
+```
+
+### *G*, *F*, and *J* Functions (inhomogeneous)
+
+```{r GFJ-inhomo, fig.width=16, fig.height=6}
+res_gfj_inhom <- lapply(c("Ginhom", "Finhom", "Jinhom"), function(fun) {
+  res <- calcMetricPerFov(
+    spe,
+    params$celltype,
+    subsetby = params$image_col,
+    fun      = fun,
+    marks    = params$mark_col,
+    rSeq     = NULL,
+    by       = params$by_vars
+  )
+  subset(res, get(params$image_col) %in% params$image_ids)
+})
+
+p_gfj_inhom_ls <- lapply(res_gfj_inhom, function(res) {
+  plotMetricPerFov(res, correction = "bord", theo = TRUE,
+                   x = "r", imageId = params$image_col,
+                   legend.position = "right")
+})
+
+wrap_plots(p_gfj_inhom_ls, guides = "collect")
+```
+
+### Nearest-Neighbour Orientation
+
+Orientation of *k*-th nearest neighbours reveals isotropy/anisotropy in the point pattern.
+
+```{r nnorient, fig.width=8, fig.height=5}
+res_nnorient <- calcMetricPerFov(
+  spe,
+  params$celltype,
+  subsetby = params$image_col,
+  fun      = "nnorient",
+  marks    = params$mark_col,
+  rSeq     = NULL,
+  by       = params$by_vars
+)
+res_nnorient <- subset(res_nnorient, get(params$image_col) %in% params$image_ids)
+
+plotMetricPerFov(res_nnorient, correction = "bordm", theo = TRUE,
+                 x = "phi", imageId = params$image_col,
+                 legend.position = "right")
+```
+
+```{r rose-diagrams, fig.width=8, fig.height=6}
+# Rose diagrams per image
+lapply(seq_along(pp_ripras), function(i) {
+  rose(nnorient(pp_ripras[[i]]), main = names(pp_ripras)[i])
+})
+```
+
+---
+
+# Part 2 – Continuous Marks
+
+## 2.1 Setup
+
+We attach gene expression values as continuous marks to the point pattern of the focal image (`r params$focal_image`).
+
+```{r continuous-setup, fig.width=12, fig.height=5}
+sub_focal <- spe[, colData(spe)[[params$image_col]] == params$focal_image]
+pp_focal  <- pp_ripras[[params$focal_image]]
+
+# Attach gene expression as marks
+gex <- assay(sub_focal)[params$genes, ] |>
+  t() |>
+  as.matrix() |>
+  as.data.frame()
+rownames(gex) <- NULL
+marks(pp_focal) <- gex
+
+# Visualise spatial gene expression
+pp_focal |>
+  as.data.frame() |>
+  tidyr::pivot_longer(cols = seq_along(params$genes) + 2) |>
+  ggplot(aes(x, y, colour = log(value + 1))) +
+  geom_point(size = 0.5) +
+  facet_wrap(~name) +
+  coord_equal() +
+  scale_color_continuous(type = "viridis") +
+  theme_light() +
+  ggtitle(paste0("Log gene expression – image ", params$focal_image))
+```
+
+```{r pairs-plot, fig.width=8, fig.height=8}
+pairs(as.data.frame(pp_focal), panel = panel.smooth, pch = ".")
+```
+
+```{r nnmark-plot, fig.width=8, fig.height=8}
+plot(nnmark(pp_focal))
+```
+
+---
+
+## 2.2 Mark Correlation Function
+
+The mark correlation function measures mark dependence between pairs of points at distance *r*. Values > 1 indicate positive mark correlation; < 1 indicates negative correlation; 1 = random labelling.
+
+```{r markcorr, fig.width=10, fig.height=5}
+res_mcorr <- calcMetricPerFov(
+  sub_focal,
+  params$celltype,
+  subsetby   = params$genes,
+  fun        = "markcorr",
+  marks      = params$genes,
+  rSeq       = NULL,
+  by         = params$by_vars,
+  continuous = TRUE
+)
+
+plotMetricPerFov(res_mcorr, correction = "iso", theo = TRUE,
+                 x = "r", imageId = "gene",
+                 legend.position = "right")
+```
+
+---
+
+## 2.3 Mark-Weighted *K*-Function
+
+The mark-weighted *K*-function generalises Ripley's *K* by weighting each pair contribution by the product of their marks. Comparing this to the unweighted *L*-function reveals whether high-expression cells are more spatially clustered than expected.
+
+```{r kmark, fig.width=10, fig.height=5}
+res_kmark <- calcMetricPerFov(
+  sub_focal,
+  params$celltype,
+  subsetby   = params$genes,
+  fun        = "Kmark",
+  marks      = params$genes,
+  rSeq       = NULL,
+  by         = params$by_vars,
+  continuous = TRUE
+)
+
+plotMetricPerFov(res_kmark, correction = "iso", theo = TRUE,
+                 x = "r", imageId = "gene",
+                 legend.position = "right")
+```
+
+### Mark-weighted *L* vs. unmarked *L* for a single gene
+
+Comparing the mark-weighted *L* with the standard *L* isolates the contribution of the continuous mark to spatial clustering.
+
+```{r kmark-vs-L, fig.width=7, fig.height=5}
+focal_gene  <- params$genes[1]   # change index to inspect a different gene
+pp_gene     <- subset(pp_focal, select = focal_gene)
+
+L_marked  <- Kmark(pp_gene, function(m1, m2) m1 * m2, returnL = TRUE)
+L_plain   <- Lest(pp_gene, nlarge = 7000)
+
+plot(eval.fv(L_marked - L_plain),
+     main = paste0("Mark-weighted L minus plain L (", focal_gene, ")"))
+```
+
+---
+
+# Summary
+
+| Analysis | Functions used |
+|----------|----------------|
+| Observation windows | `ripras`, `reconstructShapeDensitySPE` |
+| Homogeneous correlation | `Kest`, `Lest`, `pcf` |
+| Inhomogeneous correlation | `Kinhom`, `Linhom`, `pcfinhom` |
+| Locally-scaled | `Kscaled`, `Lscaled` |
+| LISA + fPCA | `localL`, `functionalPCA` |
+| Spacing | `Gest`/`Ginhom`, `Fest`/`Finhom`, `Jest`/`Jinhom` |
+| NN orientation | `nnorient`, `rose` |
+| Continuous marks | `markcorr`, `Kmark` |
+
+---
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```
