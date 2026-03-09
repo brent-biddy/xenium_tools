@@ -37,7 +37,7 @@ workflow {
 
     OBJECT_CREATION(sample_info.dir)
     SEURAT_RDS(sample_info.seurat)
-    TRANSCRIPTS(sample_info)
+    TRANSCRIPTS(sample_info.dir)
 
 }
 
