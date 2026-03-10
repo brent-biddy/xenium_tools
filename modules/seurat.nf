@@ -152,13 +152,15 @@ workflow SEURAT {
         
         if(params.cluster_full){
             cluster_seurat(seurat_rds)
-            cluster_notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
-            seurat_cluster_plots(cluster_notebook, cluster_seurat.out.rds)
+            if(params.run_cluster_plots){
+                cluster_notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
+                seurat_cluster_plots(cluster_notebook, cluster_seurat.out.rds)
+            }
         }
 
         if(params.score_markers){
             marker_notebook = file("${projectDir}/notebooks/marker_scores.ipynb")
-            marker_yaml = file("${projectDir}/refs/ovary_markers.yaml")
+            marker_yaml = file(params.marker_yaml)
             seurat_score_markers(marker_notebook, marker_yaml, seurat_rds)
         }
 
