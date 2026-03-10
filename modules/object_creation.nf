@@ -65,6 +65,34 @@ process create_bpcells_seurat_object {
 }
 
 
+process create_spatialdata_object {
+
+    tag "${sample_name}"
+
+    container 'babiddy755/xenium_tools_squidpy:latest'
+
+    time = { 15.m * (1 + task.attempt)}
+
+    input:
+    tuple val(sample_name), path(xenium_output_path)
+
+    output:
+    tuple val(sample_name), path("data.zarr"), emit: "spatialdata_zarr"
+
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "data.zarr", saveAs: { "${sample_name}_spatialdata.zarr" }, mode: 'copy'
+
+    script:
+    """
+    create_spatialdata_object.py ${xenium_output_path} --output_zarr data.zarr
+    """
+
+    stub:
+    """
+    mkdir -p data.zarr
+    """
+}
+
+
 workflow OBJECT_CREATION {
     take:
         sample_info
@@ -84,6 +112,13 @@ workflow OBJECT_CREATION {
             bpcells_rds_ch = Channel.empty()
         }
 
+        if (params.run_create_spatialdata) {
+            create_spatialdata_object(sample_info)
+            spatialdata_ch = create_spatialdata_object.out.spatialdata_zarr
+        } else {
+            spatialdata_ch = Channel.empty()
+        }
+
         if (params.run_create_seurat && params.run_create_bpcells) {
             joined = sample_info
                 .join(seurat_rds_ch)
@@ -95,4 +130,5 @@ workflow OBJECT_CREATION {
     emit:
         seurat_rds = seurat_rds_ch
         bpcells_rds = bpcells_rds_ch
+        spatialdata = spatialdata_ch
 }
