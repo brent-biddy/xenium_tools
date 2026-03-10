@@ -64,31 +64,6 @@ process create_bpcells_seurat_object {
     """
 }
 
-process xenium_qc_plots {
-
-    tag "${sample_name}"
-
-    time = { 15.m * (1 + task.attempt)}
-
-    input:
-    path (notebook_path)
-    tuple val(sample_name), path(seurat_rds)
-
-    output:
-    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
-
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_xenium_qc_report.html" }, mode: 'copy'
-
-    script:
-    """
-    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
-    """
-    stub:
-    """
-    touch jupyter_notebook.html
-    """
-}
-
 
 workflow OBJECT_CREATION {
     take:
@@ -109,11 +84,6 @@ workflow OBJECT_CREATION {
             bpcells_rds_ch = Channel.empty()
         }
 
-        if (params.run_qc_plots) {
-            notebook_file = file("${projectDir}/notebooks/xenium_qc_plots.ipynb")
-            xenium_qc_plots(notebook_file, seurat_rds_ch)
-        }
-
         if (params.run_create_seurat && params.run_create_bpcells) {
             joined = sample_info
                 .join(seurat_rds_ch)
@@ -121,4 +91,8 @@ workflow OBJECT_CREATION {
                 .flatMap{ tuple(id: it[0], xenium_dir: it[1], seurat_rds: it[2], bpcells_rds: it[3]) }
             SEURAT_OBJ(joined)
         }
+
+    emit:
+        seurat_rds = seurat_rds_ch
+        bpcells_rds = bpcells_rds_ch
 }
