@@ -2,6 +2,7 @@
 
 include { OBJECT_CREATION } from "${projectDir}/modules/object_creation.nf"
 include { SEURAT as SEURAT_RDS } from "${projectDir}/modules/seurat.nf"
+include { NOTEBOOK_EXECUTION } from "${projectDir}/modules/notebook_execution.nf"
 
 
 // Workflow block
@@ -46,13 +47,21 @@ workflow {
     sample_info.anndata.dump(tag: "anndata_input")
     sample_info.dir.dump(tag: "dir_input")
 
+    seurat_rds_ch  = Channel.empty()
+    cluster_rds_ch = Channel.empty()
+
     if (params.run_object_creation) {
         OBJECT_CREATION(sample_info.dir)
+        seurat_rds_ch = seurat_rds_ch.mix(OBJECT_CREATION.out.seurat_rds)
     }
 
     if (params.run_seurat_rds) {
         SEURAT_RDS(sample_info.seurat)
+        seurat_rds_ch  = seurat_rds_ch.mix(SEURAT_RDS.out.seurat_rds)
+        cluster_rds_ch = cluster_rds_ch.mix(SEURAT_RDS.out.cluster_rds)
     }
+
+    NOTEBOOK_EXECUTION(seurat_rds_ch, cluster_rds_ch, sample_info.dir)
 
 }
 

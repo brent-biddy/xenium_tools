@@ -1,5 +1,3 @@
-include { execute_notebook } from "${projectDir}/modules/notebook_execution.nf"
-
 process cluster_seurat {
     
     tag "${sample_name}"
@@ -57,36 +55,6 @@ process sketch_cluster_seurat {
     """
 }
 
-process bp_cells_clustering {
-
-    tag "${sample_name}"
-
-    // time { 2.h * (1 + task.attempt)}
-    errorStrategy { task.attempt < 3 ? 'retry' : 'ignore'}
-
-    stageInMode 'copy'
-
-    input:
-    path (notebook_path)
-    tuple val(sample_name), path(xenium_output)
-
-    output:
-    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
-    tuple val(sample_name), path("clustering_results.csv"), emit: cluster_csv, optional: true
-
-    publishDir "${params.output_path}/results/${sample_name}/bp_cells/", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_bp_cells_clustering_report.html" }, mode: 'copy'
-    publishDir "${params.output_path}/results/${sample_name}/bp_cells/", pattern: "clustering_results.csv", saveAs: { "${sample_name}_bp_cells_clustering_results.csv" }, mode: 'copy'
-
-    script:
-    """
-    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
-    """
-    stub:
-    """
-    touch jupyter_notebook.html
-    """
-}
-
 workflow SEURAT {
     take:
         sample_info
@@ -97,27 +65,18 @@ workflow SEURAT {
         bpcells_rds = sample_info.map{ tuple(it.id, it.bpcells_rds) } // [sample_id, bpcells_rds]
         xenium_dir = sample_info.map{ tuple(it.id, it.xenium_dir) } // [sample_id, xenium_dir]
 
+        cluster_rds_ch = Channel.empty()
+
         if(params.cluster){
             sketch_cluster_seurat(seurat_rds)
         }
-        
+
         if(params.cluster_full){
             cluster_seurat(seurat_rds)
-            if(params.run_cluster_plots){
-                cluster_notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
-                execute_notebook(cluster_seurat.out.rds, cluster_notebook, "seurat_cluster_report")
-            }
+            cluster_rds_ch = cluster_seurat.out.rds
         }
 
-        if(params.score_markers){
-            marker_notebook = file("${projectDir}/notebooks/marker_scores.ipynb")
-            marker_yaml = file(params.marker_yaml)
-            seurat_rds_with_yaml = seurat_rds.map{ sample_name, rds -> tuple(sample_name, [marker_yaml, rds]) }
-            execute_notebook(seurat_rds_with_yaml, marker_notebook, "celltype_marker_gene_report")
-        }
-
-        if(params.bp_clustering){
-            bp_clustering_nb = file("${projectDir}/notebooks/bp_cells_clustering.ipynb")
-            bp_cells_clustering(bp_clustering_nb, xenium_dir)
-        }
+    emit:
+        seurat_rds = seurat_rds
+        cluster_rds = cluster_rds_ch
 }
