@@ -1,5 +1,6 @@
 
 include { SEURAT as SEURAT_OBJ } from "${projectDir}/modules/seurat.nf"
+include { execute_notebook } from "${projectDir}/modules/notebook_execution.nf"
 
 
 process create_seurat_object {
@@ -64,31 +65,6 @@ process create_bpcells_seurat_object {
     """
 }
 
-process xenium_qc_plots {
-
-    tag "${sample_name}"
-
-    time = { 15.m * (1 + task.attempt)}
-
-    input:
-    path (notebook_path)
-    tuple val(sample_name), path(seurat_rds)
-
-    output:
-    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
-
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_xenium_qc_report.html" }, mode: 'copy'
-
-    script:
-    """
-    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
-    """
-    stub:
-    """
-    touch jupyter_notebook.html
-    """
-}
-
 
 workflow OBJECT_CREATION {
     take:
@@ -111,7 +87,7 @@ workflow OBJECT_CREATION {
 
         if (params.run_qc_plots) {
             notebook_file = file("${projectDir}/notebooks/xenium_qc_plots.ipynb")
-            xenium_qc_plots(notebook_file, seurat_rds_ch)
+            execute_notebook(seurat_rds_ch, notebook_file, "xenium_qc_report")
         }
 
         if (params.run_create_seurat && params.run_create_bpcells) {

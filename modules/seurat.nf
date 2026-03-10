@@ -1,3 +1,5 @@
+include { execute_notebook } from "${projectDir}/modules/notebook_execution.nf"
+
 process cluster_seurat {
     
     tag "${sample_name}"
@@ -27,31 +29,6 @@ process cluster_seurat {
     """
 }
 
-process seurat_cluster_plots {
-
-    tag "${sample_name}"
-
-    time = { 15.m * (1 + task.attempt) }
-
-    input:
-    path (notebook_path)
-    tuple val(sample_name), path(seurat_rds)
-
-    output:
-    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
-
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_seurat_cluster_report.html" }, mode: 'copy'
-
-    script:
-    """
-    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
-    """
-    stub:
-    """
-    touch jupyter_notebook.html
-    """
-}
-
 process sketch_cluster_seurat {
     
     tag "${sample_name}"
@@ -77,32 +54,6 @@ process sketch_cluster_seurat {
     """
     touch test_sketch_and_cluster_seurat.RDS
     touch test_sketch_and_cluster_seurat_clusters.csv
-    """
-}
-
-process seurat_score_markers {
-
-    tag "${sample_name}"
-
-    time = { 15.m * (1 + task.attempt)}
-
-    input:
-    path (notebook_path)
-    path(yaml_path)
-    tuple val(sample_name), path(seurat_rds)
-
-    output:
-    tuple val(sample_name), path("jupyter_notebook.html"), emit: html
-
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "jupyter_notebook.html", saveAs: { "${sample_name}_celltype_marker_gene_report.html" }, mode: 'copy'
-
-    script:
-    """
-    jupyter nbconvert --execute --allow-errors --output jupyter_notebook --to html ${notebook_path}
-    """
-    stub:
-    """
-    touch jupyter_notebook.html
     """
 }
 
@@ -154,14 +105,15 @@ workflow SEURAT {
             cluster_seurat(seurat_rds)
             if(params.run_cluster_plots){
                 cluster_notebook = file("${projectDir}/notebooks/seurat_cluster_plots.ipynb")
-                seurat_cluster_plots(cluster_notebook, cluster_seurat.out.rds)
+                execute_notebook(cluster_seurat.out.rds, cluster_notebook, "seurat_cluster_report")
             }
         }
 
         if(params.score_markers){
             marker_notebook = file("${projectDir}/notebooks/marker_scores.ipynb")
             marker_yaml = file(params.marker_yaml)
-            seurat_score_markers(marker_notebook, marker_yaml, seurat_rds)
+            seurat_rds_with_yaml = seurat_rds.map{ sample_name, rds -> tuple(sample_name, [marker_yaml, rds]) }
+            execute_notebook(seurat_rds_with_yaml, marker_notebook, "celltype_marker_gene_report")
         }
 
         if(params.bp_clustering){
