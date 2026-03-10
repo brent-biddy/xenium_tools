@@ -19,7 +19,7 @@ process create_seurat_object {
     publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_object_downsampled.RDS", saveAs: { "${sample_name}_seurat_downsampled.RDS" }, mode: 'copy'
 
     script:
-    def downsample_flag = params.downsample == "true" ? "--downsample" : ""
+    def downsample_flag = params.downsample ? "--downsample" : ""
     """
     create_seurat_xenium.R --data_dir ${xenium_output_path} --sample_name ${sample_name} ${downsample_flag}
     """
@@ -50,7 +50,7 @@ process create_bpcells_seurat_object {
     publishDir "${params.output_path}/results/${sample_name}/bpcells/", pattern: "bpcells_seurat_object_downsampled.RDS", saveAs: { "${sample_name}_bpcells_seurat_downsampled.RDS" }, mode: 'copy'
 
     script:
-    def downsample_flag = params.downsample == "true" ? "--downsample" : ""
+    def downsample_flag = params.downsample ? "--downsample" : ""
     """
     create_bpcells_seurat_xenium.R --data_dir ${xenium_output_path} --sample_name ${sample_name} ${downsample_flag}
     """
@@ -94,20 +94,31 @@ workflow OBJECT_CREATION {
     take:
         sample_info
     main:
-        
-        create_seurat_object(sample_info)
-        
-        create_bpcells_seurat_object(sample_info)
 
-        notebook_file = file("${projectDir}/notebooks/xenium_qc_plots.ipynb")
-        xenium_qc_plots(notebook_file, create_seurat_object.out.full_rds)
-
-        sample_info = sample_info.join(create_seurat_object.out.full_rds)
-        sample_info = sample_info.join(create_bpcells_seurat_object.out.full_rds)
-
-        sample_info = sample_info.flatMap{
-            tuple(id: it[0], xenium_dir: it[1], seurat_rds: it[2], bpcells_rds: it[3])
+        if (params.run_create_seurat) {
+            create_seurat_object(sample_info)
+            seurat_rds_ch = create_seurat_object.out.full_rds
+        } else {
+            seurat_rds_ch = Channel.empty()
         }
-        
-        SEURAT_OBJ(sample_info)
+
+        if (params.run_create_bpcells) {
+            create_bpcells_seurat_object(sample_info)
+            bpcells_rds_ch = create_bpcells_seurat_object.out.full_rds
+        } else {
+            bpcells_rds_ch = Channel.empty()
+        }
+
+        if (params.run_qc_plots) {
+            notebook_file = file("${projectDir}/notebooks/xenium_qc_plots.ipynb")
+            xenium_qc_plots(notebook_file, seurat_rds_ch)
+        }
+
+        if (params.run_create_seurat && params.run_create_bpcells) {
+            joined = sample_info
+                .join(seurat_rds_ch)
+                .join(bpcells_rds_ch)
+                .flatMap{ tuple(id: it[0], xenium_dir: it[1], seurat_rds: it[2], bpcells_rds: it[3]) }
+            SEURAT_OBJ(joined)
+        }
 }

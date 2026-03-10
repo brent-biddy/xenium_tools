@@ -15,6 +15,18 @@ workflow {
         error "ERROR: Samplesheet file not found: ${params.samplesheet}"
     }
 
+    if (params.run_qc_plots && !params.run_create_seurat) {
+        error "ERROR: run_qc_plots requires run_create_seurat to be true"
+    }
+
+    if (params.run_cluster_plots && !params.cluster_full) {
+        log.warn "WARNING: run_cluster_plots=true has no effect when cluster_full=false"
+    }
+
+    if (params.score_markers && !file(params.marker_yaml).exists()) {
+        error "ERROR: score_markers is enabled but marker_yaml file not found: ${params.marker_yaml}"
+    }
+
     Channel.fromPath(params.samplesheet)
         .splitCsv(header:true)
         .map{ row -> 
@@ -34,8 +46,13 @@ workflow {
     sample_info.anndata.dump(tag: "anndata_input")
     sample_info.dir.dump(tag: "dir_input")
 
-    OBJECT_CREATION(sample_info.dir)
-    SEURAT_RDS(sample_info.seurat)
+    if (params.run_object_creation) {
+        OBJECT_CREATION(sample_info.dir)
+    }
+
+    if (params.run_seurat_rds) {
+        SEURAT_RDS(sample_info.seurat)
+    }
 
 }
 
