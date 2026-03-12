@@ -34,7 +34,7 @@ workflow {
             if (!row.sample || !row.path) {
                 error "ERROR: Samplesheet must have 'sample' and 'path' columns"
             }
-            tuple(row.sample, file(row.path), row.image_path ?: '', row.alignment_file ?: '')
+            tuple(row.sample, file(row.path))
         }
         .branch{
             seurat: it[1].getExtension() == "RDS"
