@@ -3,8 +3,9 @@ include { SEURAT as SEURAT_OBJ } from "${projectDir}/modules/seurat.nf"
 
 
 process create_seurat_object {
-    
+
     tag "${sample_name}"
+    label 'seurat'
 
     time = { 15.m * (1 + task.attempt)}
 
@@ -28,8 +29,9 @@ process create_seurat_object {
 }
 
 process create_bpcells_seurat_object {
-    
+
     tag "${sample_name}"
+    label 'seurat'
 
     time = { 15.m * (1 + task.attempt)}
 
@@ -62,6 +64,7 @@ process create_bpcells_seurat_object {
 process downsample_seurat_object {
 
     tag "${sample_name}"
+    label 'seurat'
 
     time = { 15.m * (1 + task.attempt)}
 
@@ -88,8 +91,7 @@ process downsample_seurat_object {
 process create_spatialdata_object {
 
     tag "${sample_name}"
-
-    container 'babiddy755/xenium_tools_squidpy:latest'
+    label 'squidpy'
 
     time = { 15.m * (1 + task.attempt)}
 
@@ -116,8 +118,7 @@ process create_spatialdata_object {
 process downsample_spatialdata_object {
 
     tag "${sample_name}"
-
-    container 'babiddy755/xenium_tools_squidpy:latest'
+    label 'squidpy'
 
     time = { 15.m * (1 + task.attempt)}
 

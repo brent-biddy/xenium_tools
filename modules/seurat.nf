@@ -1,6 +1,7 @@
 process cluster_seurat {
-    
+
     tag "${sample_name}"
+    label 'seurat'
 
     time { 2.h * (1 + task.attempt)}
     errorStrategy { task.attempt < 3 ? 'retry' : 'ignore'}
@@ -28,8 +29,9 @@ process cluster_seurat {
 }
 
 process sketch_cluster_seurat {
-    
+
     tag "${sample_name}"
+    label 'seurat'
 
     time = { 15.m * (1 + task.attempt)}
 
