@@ -15,7 +15,10 @@ from spatialdata.transformations import Identity
 from spatialdata_io import xenium
 
 
-def load_morphology_focus_v4(morphology_focus_dir: Path) -> Image2DModel:
+def load_morphology_focus_v4(
+    morphology_focus_dir: Path,
+    image_models_kwargs: dict = {},
+) -> Image2DModel:
     """Manually load v4 morphology focus images (ch0000_dapi.ome.tif naming scheme).
 
     This is a workaround for a bug in spatialdata-io where v4-style filenames are
@@ -60,6 +63,7 @@ def load_morphology_focus_v4(morphology_focus_dir: Path) -> Image2DModel:
         transformations={"global": Identity()},
         c_coords=channel_names,
         rgb=None,
+        **image_models_kwargs,
     )
 
 
@@ -83,16 +87,25 @@ def main():
 
     xenium_dir = Path(args.xenium_dir)
 
+    # Use multiscale pyramids and explicit chunk sizes to avoid large-chunk warnings
+    # and potential compression errors when writing.
+    image_models_kwargs = {
+        "scale_factors": [2, 2, 2, 2],
+        "chunks": (1, 4096, 4096),
+    }
+
     print(f"Reading Xenium directory: {xenium_dir}")
-    sdata = xenium(xenium_dir, morphology_focus=False)
+    sdata = xenium(xenium_dir, morphology_focus=False, image_models_kwargs=image_models_kwargs)
 
     # Workaround: load morphology focus images manually to handle v4-style filenames
     # (ch0000_dapi.ome.tif) that are not detected when experiment.xenium metadata
-    # reports a version < 2.0.0. See: https://github.com/scverse/spatialdata-io/issues/362, https://github.com/scverse/spatialdata-io/issues/361
+    # reports a version < 2.0.0. See: https://github.com/scverse/spatialdata-io/issues
     morphology_focus_dir = xenium_dir / "morphology_focus"
     if morphology_focus_dir.exists():
         print("Loading morphology focus images (v4 workaround)...")
-        sdata.images["morphology_focus"] = load_morphology_focus_v4(morphology_focus_dir)
+        sdata.images["morphology_focus"] = load_morphology_focus_v4(
+            morphology_focus_dir, image_models_kwargs=image_models_kwargs
+        )
     else:
         print("Warning: morphology_focus directory not found, skipping.")
 
