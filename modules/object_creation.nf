@@ -93,6 +93,34 @@ process create_spatialdata_object {
 }
 
 
+process downsample_spatialdata_object {
+
+    tag "${sample_name}"
+
+    container 'babiddy755/xenium_tools_squidpy:latest'
+
+    time = { 15.m * (1 + task.attempt)}
+
+    input:
+    tuple val(sample_name), path(spatialdata_zarr)
+
+    output:
+    tuple val(sample_name), path("data_downsampled.zarr"), emit: "downsampled_zarr"
+
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "data_downsampled.zarr", saveAs: { "${sample_name}_spatialdata_downsampled.zarr" }, mode: 'copy'
+
+    script:
+    """
+    downsample_spatialdata_object.py --zarr_file ${spatialdata_zarr} --bin_size ${params.downsample_bin_size} --fraction ${params.downsample_fraction}
+    """
+
+    stub:
+    """
+    mkdir -p data_downsampled.zarr
+    """
+}
+
+
 workflow OBJECT_CREATION {
     take:
         sample_info
@@ -116,6 +144,10 @@ workflow OBJECT_CREATION {
             spatialdata_ch = create_spatialdata_object.out.spatialdata_zarr
         } else {
             spatialdata_ch = Channel.empty()
+        }
+
+        if (params.run_create_spatialdata && params.run_downsample) {
+            downsample_spatialdata_object(spatialdata_ch)
         }
 
         if (params.run_create_seurat && params.run_create_bpcells) {
