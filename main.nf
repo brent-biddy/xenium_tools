@@ -30,11 +30,11 @@ workflow {
 
     Channel.fromPath(params.samplesheet)
         .splitCsv(header:true)
-        .map{ row -> 
-            if (!row.sample || !row.path) { 
+        .map{ row ->
+            if (!row.sample || !row.path) {
                 error "ERROR: Samplesheet must have 'sample' and 'path' columns"
             }
-            tuple(row.sample, file(row.path)) 
+            tuple(row.sample, file(row.path), row.image_path ?: '', row.alignment_file ?: '')
         }
         .branch{
             seurat: it[1].getExtension() == "RDS"
