@@ -2,6 +2,7 @@
 process execute_notebook {
 
     tag "${sample_name}"
+    label 'seurat'
 
     time = { 15.m * (1 + task.attempt) }
 
@@ -31,6 +32,7 @@ process execute_notebook {
 process bp_cells_clustering {
 
     tag "${sample_name}"
+    label 'seurat'
 
     errorStrategy { task.attempt < 3 ? 'retry' : 'ignore'}
 
