@@ -95,19 +95,19 @@ def main():
     }
 
     print(f"Reading Xenium directory: {xenium_dir}")
-    sdata = xenium(xenium_dir, morphology_focus=False, image_models_kwargs=image_models_kwargs)
+    sdata = xenium(xenium_dir, morphology_focus=True, image_models_kwargs=image_models_kwargs)
 
-    # Workaround: load morphology focus images manually to handle v4-style filenames
-    # (ch0000_dapi.ome.tif) that are not detected when experiment.xenium metadata
-    # reports a version < 2.0.0. See: https://github.com/scverse/spatialdata-io/issues
-    morphology_focus_dir = xenium_dir / "morphology_focus"
-    if morphology_focus_dir.exists():
-        print("Loading morphology focus images (v4 workaround)...")
-        sdata.images["morphology_focus"] = load_morphology_focus_v4(
-            morphology_focus_dir, image_models_kwargs=image_models_kwargs
-        )
-    else:
-        print("Warning: morphology_focus directory not found, skipping.")
+    # # Workaround: load morphology focus images manually to handle v4-style filenames
+    # # (ch0000_dapi.ome.tif) that are not detected when experiment.xenium metadata
+    # # reports a version < 2.0.0. See: https://github.com/scverse/spatialdata-io/issues
+    # morphology_focus_dir = xenium_dir / "morphology_focus"
+    # if morphology_focus_dir.exists():
+    #     print("Loading morphology focus images (v4 workaround)...")
+    #     sdata.images["morphology_focus"] = load_morphology_focus_v4(
+    #         morphology_focus_dir, image_models_kwargs=image_models_kwargs
+    #     )
+    # else:
+    #     print("Warning: morphology_focus directory not found, skipping.")
 
     print(f"Writing SpatialData Zarr: {args.output_zarr}")
     sdata.write(args.output_zarr, overwrite=True)
