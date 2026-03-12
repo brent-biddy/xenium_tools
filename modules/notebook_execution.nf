@@ -59,11 +59,41 @@ process bp_cells_clustering {
     """
 }
 
+process execute_squidpy_notebook {
+
+    tag "${sample_name}"
+    label 'squidpy'
+
+    time = { 15.m * (1 + task.attempt) }
+
+    input:
+    tuple val(sample_name), path(spatialdata_zarr)
+    path(notebook)
+
+    output:
+    tuple val(sample_name), path("squidpy_report.html"), emit: html
+
+    publishDir "${params.output_path}/results/${sample_name}",
+        pattern: "squidpy_report.html",
+        saveAs: { "${sample_name}_squidpy_report.html" },
+        mode: 'copy'
+
+    script:
+    """
+    quarto render ${notebook} -P xenium_zarr:${spatialdata_zarr} --output squidpy_report.html
+    """
+    stub:
+    """
+    touch squidpy_report.html
+    """
+}
+
 workflow NOTEBOOK_EXECUTION {
     take:
         seurat_rds_ch    // [sample_name, rds] - used for qc_plots and score_markers
         cluster_rds_ch   // [sample_name, rds] - used for cluster_plots
         xenium_dir_ch    // [sample_name, dir] - used for bp_clustering
+        spatialdata_ch   // [sample_name, zarr] - used for squidpy_notebook
 
     main:
         if (params.run_qc_plots) {
@@ -86,5 +116,10 @@ workflow NOTEBOOK_EXECUTION {
         if (params.bp_clustering) {
             bp_clustering_nb = file("${projectDir}/notebooks/bp_cells_clustering.ipynb")
             bp_cells_clustering(bp_clustering_nb, xenium_dir_ch)
+        }
+
+        if (params.run_squidpy_notebook) {
+            squidpy_nb = file("${projectDir}/notebooks/squidpy_notebook.qmd")
+            execute_squidpy_notebook(spatialdata_ch, squidpy_nb)
         }
 }

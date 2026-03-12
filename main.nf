@@ -47,12 +47,14 @@ workflow {
     sample_info.anndata.dump(tag: "anndata_input")
     sample_info.dir.dump(tag: "dir_input")
 
-    seurat_rds_ch  = Channel.empty()
-    cluster_rds_ch = Channel.empty()
+    seurat_rds_ch    = Channel.empty()
+    cluster_rds_ch   = Channel.empty()
+    spatialdata_ch   = Channel.empty()
 
     if (params.run_object_creation) {
         OBJECT_CREATION(sample_info.dir)
-        seurat_rds_ch = seurat_rds_ch.mix(OBJECT_CREATION.out.seurat_rds)
+        seurat_rds_ch  = seurat_rds_ch.mix(OBJECT_CREATION.out.seurat_rds)
+        spatialdata_ch = spatialdata_ch.mix(OBJECT_CREATION.out.spatialdata)
     }
 
     if (params.run_seurat_rds) {
@@ -61,7 +63,7 @@ workflow {
         cluster_rds_ch = cluster_rds_ch.mix(SEURAT_RDS.out.cluster_rds)
     }
 
-    NOTEBOOK_EXECUTION(seurat_rds_ch, cluster_rds_ch, sample_info.dir)
+    NOTEBOOK_EXECUTION(seurat_rds_ch, cluster_rds_ch, sample_info.dir, spatialdata_ch)
 
 }
 
