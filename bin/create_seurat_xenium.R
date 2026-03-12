@@ -12,8 +12,6 @@ arguments <- function(){
     parser <- ArgumentParser(description='Create a Seurat object from Xenium data')
     parser$add_argument('--data_dir', required=TRUE, help='Path to the Xenium data directory')
     parser$add_argument('--sample_name', required=FALSE, help='Sample name for the Seurat object', default='Xenium_Sample')
-    parser$add_argument('--downsample', required = FALSE, action='store_true', help='Whether to downsample the data')
-
     args <- parser$parse_args()
     
     return(args)    
@@ -90,7 +88,7 @@ add_reductions <- function(seurat_obj, data_dir){
 
 }
 
-create_seurat_xenium <- function(data_dir, sample_name = "Xenium_Sample", downsample = TRUE){
+create_seurat_xenium <- function(data_dir, sample_name = "Xenium_Sample"){
 
     print(paste("Creating Seurat object from Xenium data in: ", data_dir))
     print(paste("Sample name set to: ", sample_name))
@@ -102,11 +100,6 @@ create_seurat_xenium <- function(data_dir, sample_name = "Xenium_Sample", downsa
     seurat_obj <- add_meta_and_clusters(seurat_obj, data_dir)
     seurat_obj <- add_reductions(seurat_obj, data_dir)
 
-    if(downsample){
-        print("Saving Downsampled Seurat Object")
-        saveRDS(subset(seurat_obj, downsample = 100), file = "seurat_object_downsampled.RDS")
-    }
-
     print("Saving Full Seurat Object")
     saveRDS(seurat_obj, file = "seurat_object.RDS")
 }
@@ -115,7 +108,7 @@ main <- function(){
 
     args <- arguments()
     
-    seurat <- create_seurat_xenium(data_dir = args$data_dir, sample_name = args$sample_name, downsample = args$downsample)
+    seurat <- create_seurat_xenium(data_dir = args$data_dir, sample_name = args$sample_name)
 }
 
 main()

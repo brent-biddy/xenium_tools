@@ -13,23 +13,17 @@ process create_seurat_object {
 
     output:
     tuple val(sample_name), path("seurat_object.RDS"), emit: "full_rds"
-    tuple val(sample_name), path("seurat_object_downsampled.RDS"), emit: "small_rds", optional: true
-    
+
     publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_object.RDS", saveAs: { "${sample_name}_seurat.RDS" }, mode: 'copy'
-    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_object_downsampled.RDS", saveAs: { "${sample_name}_seurat_downsampled.RDS" }, mode: 'copy'
 
     script:
-    def downsample_flag = params.downsample ? "--downsample" : ""
     """
-    create_seurat_xenium.R --data_dir ${xenium_output_path} --sample_name ${sample_name} ${downsample_flag}
+    create_seurat_xenium.R --data_dir ${xenium_output_path} --sample_name ${sample_name}
     """
 
     stub:
     """
     touch seurat_object.RDS
-    if [[ "${params.downsample}" == "true" ]]; then
-        touch seurat_object_downsampled.RDS
-    fi
     """
 }
 
@@ -61,6 +55,32 @@ process create_bpcells_seurat_object {
     if [[ "${params.downsample}" == "true" ]]; then
         touch bpcells_seurat_object_downsampled.RDS
     fi
+    """
+}
+
+
+process downsample_seurat_object {
+
+    tag "${sample_name}"
+
+    time = { 15.m * (1 + task.attempt)}
+
+    input:
+    tuple val(sample_name), path(seurat_rds)
+
+    output:
+    tuple val(sample_name), path("seurat_object_downsampled.RDS"), emit: "downsampled_rds"
+
+    publishDir "${params.output_path}/results/${sample_name}", pattern: "seurat_object_downsampled.RDS", saveAs: { "${sample_name}_seurat_downsampled.RDS" }, mode: 'copy'
+
+    script:
+    """
+    downsample_seurat_xenium.R --rds_file ${seurat_rds} --bin_size ${params.downsample_bin_size} --fraction ${params.downsample_fraction}
+    """
+
+    stub:
+    """
+    touch seurat_object_downsampled.RDS
     """
 }
 
@@ -102,6 +122,10 @@ workflow OBJECT_CREATION {
             seurat_rds_ch = create_seurat_object.out.full_rds
         } else {
             seurat_rds_ch = Channel.empty()
+        }
+
+        if (params.run_create_seurat && params.run_downsample) {
+            downsample_seurat_object(seurat_rds_ch)
         }
 
         if (params.run_create_bpcells) {
