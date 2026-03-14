@@ -4,15 +4,17 @@ channels:
 dependencies:
   - python=3.11
   - quarto
-  - squidpy
-  - spatialdata
-  - spatialdata-io
-  - ome-zarr >=0.12
-  - scanpy
-  - anndata
   - pandas
   - matplotlib
   - seaborn
   - jupyter
   - ipykernel
   - setuptools <71
+  - pip
+  - pip:
+    - spatialdata
+    - spatialdata-io
+    - spatialdata-plot
+    - squidpy
+    - scanpy
+    - anndata
