@@ -1,0 +1,18 @@
+name: python_squidpy
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - quarto
+  - squidpy
+  - spatialdata
+  - spatialdata-io
+  - scanpy
+  - anndata
+  - pandas
+  - matplotlib
+  - seaborn
+  - jupyter
+  - ipykernel
+  - zarr <3
+  - setuptools <71
