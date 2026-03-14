@@ -14,5 +14,4 @@ dependencies:
   - seaborn
   - jupyter
   - ipykernel
-  - zarr <3
   - setuptools <71
