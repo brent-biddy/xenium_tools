@@ -8,6 +8,30 @@ import spatialdata
 from spatialdata import SpatialData
 
 
+def get_point_coordinate_columns(points_df):
+    candidates = [
+        ("x_location", "y_location"),
+        ("x", "y"),
+        ("global_x", "global_y"),
+    ]
+    for x_col, y_col in candidates:
+        if x_col in points_df.columns and y_col in points_df.columns:
+            return {"x": x_col, "y": y_col}
+
+    raise ValueError(
+        "Could not determine point coordinate columns. "
+        f"Available columns: {list(points_df.columns)}"
+    )
+
+
+def get_point_transformations(points):
+    attrs = getattr(points, "attrs", {})
+    transform = attrs.get("transform", {})
+    if transform:
+        return dict(transform)
+    return None
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Spatially-aware downsampling of a Xenium SpatialData Zarr store."
@@ -67,13 +91,19 @@ def spatial_downsample(sdata, bin_size=50, fraction=0.1):
     filtered_points = {}
     for point_name, points in sdata.points.items():
         points_df = points.compute()
+        print(f"Processing points element: {point_name}")
+        print(f"Point columns: {list(points_df.columns)}")
+        print(f"Point attrs keys: {list(getattr(points, 'attrs', {}).keys())}")
         if "cell_id" in points_df.columns:
             points_df = points_df[points_df["cell_id"].isin(sampled_set)]
-        filtered = spatialdata.models.PointsModel.parse(
-            points_df,
-            coordinates={"x": "x_location", "y": "y_location"},
-            transformations=dict(points.attrs.get("transform", {})),
-        )
+        coordinates = get_point_coordinate_columns(points_df)
+        transformations = get_point_transformations(points)
+        parse_kwargs = {
+            "coordinates": coordinates,
+        }
+        if transformations is not None:
+            parse_kwargs["transformations"] = transformations
+        filtered = spatialdata.models.PointsModel.parse(points_df, **parse_kwargs)
         filtered_points[point_name] = filtered
 
     downsampled_sdata = SpatialData(
