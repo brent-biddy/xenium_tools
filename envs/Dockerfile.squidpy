@@ -1,15 +1,21 @@
-FROM mambaorg/micromamba:1.5.8
+# Python 3.11 slim base for Xenium / SpatialData
+FROM python:3.10-slim
 
-ENV JUPYTER_PATH=/usr/local/share/jupyter \
-    JUPYTER_CONFIG_DIR=/usr/local/etc/jupyter \
-    PATH=/opt/conda/envs/python_squidpy/bin:$PATH \
-    NUMBA_CACHE_DIR=/tmp/numba_cache \
-    MPLCONFIGDIR=/tmp/matplotlib
+ENV PYTHONUNBUFFERED=1
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
+ENV MPLCONFIGDIR=/tmp/matplotlib
+ENV PATH=/root/.local/bin:$PATH
 
-USER root
+# Dask memory tuning
+ENV DASK_DISTRIBUTED__WORKER__MEMORY__TARGET=0.85
+ENV DASK_DISTRIBUTED__WORKER__MEMORY__SPILL=0.90
+ENV DASK_DISTRIBUTED__WORKER__MEMORY__PAUSE=0.95
 
-# System dependencies required by numba and OpenGL-dependent packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
     libgomp1 \
     libgl1 \
     libxext6 \
@@ -18,14 +24,43 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Quarto
+RUN curl -LO https://quarto.org/download/latest/quarto-linux-amd64.deb && \
+    dpkg -i quarto-linux-amd64.deb && \
+    rm quarto-linux-amd64.deb
+
+# Create writable Numba cache
 RUN mkdir -p /tmp/numba_cache /tmp/matplotlib && chmod 777 /tmp/numba_cache /tmp/matplotlib
 
-USER $MAMBA_USER
+# Upgrade pip, setuptools, and wheel — setuptools ships with this image
+# so pkg_resources is always present
+# setuptools>=71 deprecates pkg_resources as a standalone import.
+# Pinning below 71 ensures it remains available for packages that rely on it.
+RUN pip install --upgrade pip "setuptools<71" wheel
 
-# Layer 1: Create mamba environment from YAML
-COPY --chown=$MAMBA_USER:$MAMBA_USER squidpy_env.yml /tmp/squidpy_env.yml
-RUN micromamba env create -f /tmp/squidpy_env.yml && \
-    micromamba clean --all --yes
+# Install Python packages
+RUN pip install \
+    scanpy \
+    anndata \
+    numpy \
+    scipy \
+    pandas \
+    numba \
+    shapely \
+    pyarrow \
+    "zarr<3" \
+    "dask[complete]" \
+    distributed \
+    squidpy \
+    "spatialdata[extra]>=0.2.7" \
+    ome-zarr \
+    ipykernel \
+    uv
 
-# Layer 2: Register Jupyter kernel (most likely to change)
+# Register Jupyter kernel
 RUN python -m ipykernel install --sys-prefix --name python_squidpy --display-name "python_squidpy"
+
+# Set working directory
+WORKDIR /workspace
+
+CMD ["/bin/bash"]
