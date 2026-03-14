@@ -4,9 +4,11 @@ This directory contains the container definition files for the Xenium analysis e
 
 | File | Purpose |
 |---|---|
-| `Dockerfile.seurat` | Builds a Docker image for push to Docker Hub (used by all Nextflow profiles) |
+| `Dockerfile.seurat` | Builds the seurat Docker image (R-based, used for QC, clustering, and marker scoring) |
+| `Dockerfile.squidpy` | Builds the squidpy Docker image (Python-based, used for spatial analysis notebooks) |
+| `squidpy_env.yml` | Conda environment definition for the squidpy container |
 
-Throughout these instructions, replace `<dockerhub-username>` and `<image-name>` with your own Docker Hub username and a name of your choosing. After building and pushing, update `process.container` in `nextflow.config` to match your chosen image path.
+Throughout these instructions, replace `<dockerhub-username>` and `<image-name>` with your own Docker Hub username and a name of your choosing. After building and pushing, update the relevant `container` entry in `nextflow.config` to match your chosen image path.
 
 ---
 
@@ -19,7 +21,7 @@ Throughout these instructions, replace `<dockerhub-username>` and `<image-name>`
 
 ## Building and Pushing Manually
 
-### 1. Build the Docker image
+### Seurat image
 
 ```bash
 cd envs/
@@ -34,27 +36,21 @@ docker build -f Dockerfile.seurat -t <dockerhub-username>/<image-name>:latest .
 >     -t <dockerhub-username>/<image-name>:latest .
 > ```
 
-### 2. Log in to Docker Hub
+### Squidpy image
+
+```bash
+cd envs/
+docker build -f Dockerfile.squidpy -t <dockerhub-username>/<image-name>:latest .
+```
+
+### Push to Docker Hub
 
 ```bash
 docker login
-```
-
-### 3. Push the image to Docker Hub
-
-```bash
 docker push <dockerhub-username>/<image-name>:latest
 ```
 
-### 4. Update `nextflow.config`
-
-Set `process.container` to your image path:
-
-```groovy
-process.container = '<dockerhub-username>/<image-name>:latest'
-```
-
-### 5. (Optional) Tag and push a versioned release
+### (Optional) Tag and push a versioned release
 
 ```bash
 docker tag <dockerhub-username>/<image-name>:latest <dockerhub-username>/<image-name>:1.0.0
@@ -65,7 +61,7 @@ docker push <dockerhub-username>/<image-name>:1.0.0
 
 ## Running the Workflow
 
-Once your image is built and `nextflow.config` is updated, run the workflow with your chosen profile:
+Once your images are built and `nextflow.config` is updated, run the workflow with your chosen profile:
 
 ```bash
 # Docker
@@ -85,6 +81,8 @@ nextflow run main.nf --samplesheet samples.csv -profile oscer
 
 ## Container Contents
 
+### Seurat
+
 **Base Image:** `bioconductor/bioconductor_docker:3.21`
 
 **System Dependencies:** `libhdf5-dev`, `libgeos-dev`, `libproj-dev`, `libudunits2-dev`, `libgdal-dev`, `libglpk-dev`, `pandoc`
@@ -92,6 +90,18 @@ nextflow run main.nf --samplesheet samples.csv -profile oscer
 **Python Packages:** `jupyter`, `nbconvert`, `ipykernel`, `matplotlib`
 
 **R Packages:** `Seurat`, `SeuratObject`, `Signac`, `patchwork`, `data.table`, `dplyr`, `argparse`, `R.utils`, `arrow` (v21.0.0), `IRkernel`, `pals`
+
+**Jupyter Kernel:** `r_seurat`
+
+### Squidpy
+
+**Base Image:** `mambaorg/micromamba:latest`
+
+**Environment:** defined in `squidpy_env.yml` (conda-forge + bioconda)
+
+**Packages:** `quarto`, `squidpy`, `spatialdata`, `spatialdata-io`, `scanpy`, `anndata`, `pandas`, `matplotlib`, `seaborn`, `jupyter`, `ipykernel`
+
+**Jupyter Kernel:** `python_squidpy`
 
 ---
 
@@ -104,19 +114,23 @@ nextflow run main.nf --samplesheet samples.csv -profile oscer
 
 ## CI/CD: Manual Builds via GitHub Actions
 
-The workflow at `.github/workflows/build-docker.yml` is triggered manually from the GitHub Actions UI via the "Run workflow" button. It builds the Docker image and pushes it to Docker Hub, tagging it with both `latest` and the commit SHA. After a successful push, `nextflow.config` is automatically updated with the new SHA-tagged image reference and committed back to the repo.
+Two workflows are available, each triggered manually from the GitHub Actions UI via the "Run workflow" button. Each builds the relevant Docker image, pushes it to Docker Hub tagged with both `latest` and the commit SHA, then automatically updates the corresponding `container` entry in `nextflow.config` and commits it back to the repo.
 
-Layer caching is enabled via the GitHub Actions cache, so rebuilds that don't change early Dockerfile layers (base image, system dependencies) will be significantly faster.
+Layer caching is enabled via the GitHub Actions cache, so rebuilds that don't change early Dockerfile layers will be significantly faster.
+
+| Workflow | File |
+|---|---|
+| Build and Push Seurat Docker Image | `.github/workflows/build-docker.yml` |
+| Build and Push Squidpy Docker Image | `.github/workflows/build-docker-squidpy.yml` |
 
 ### Required GitHub Secrets and Variables
 
-Before the action can run, configure the following in your repository under **Settings → Secrets and variables → Actions**:
+Before either action can run, configure the following in your repository under **Settings → Secrets and variables → Actions**:
 
-| Type | Name | Value |
+| Type | Name | Used by |
 |---|---|---|
-| Secret | `DOCKERHUB_USERNAME` | Your Docker Hub username |
-| Secret | `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://app.docker.com/settings/personal-access-tokens) (not your password) |
-| Secret | `GH_TOKEN` | A GitHub [personal access token](https://github.com/settings/tokens) (optional — used to avoid GitHub API rate limits when installing R packages from GitHub during the build) |
-| Variable | `DOCKERHUB_IMAGE` | The image name to push to (e.g. `xenium_tools_seurat`) |
-
-Once set, trigger the workflow from **Actions → Build and Push Docker Image → Run workflow**.
+| Secret | `DOCKERHUB_USERNAME` | Both |
+| Secret | `DOCKERHUB_TOKEN` | Both |
+| Secret | `GH_TOKEN` | Seurat only (avoids GitHub API rate limits for R package installs) |
+| Variable | `DOCKERHUB_IMAGE` | Seurat (e.g. `xenium_tools_seurat`) |
+| Variable | `DOCKERHUB_IMAGE_SQUIDPY` | Squidpy (e.g. `xenium_tools_squidpy`) |

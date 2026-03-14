@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and Push Seurat Docker Image
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
       - name: Update container reference in nextflow.config
         run: |
           IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_IMAGE }}:${{ github.sha }}"
-          sed -i "s|process.container = '.*'|process.container = '${IMAGE}'|g" nextflow.config
+          sed -i "/withLabel: seurat/,/}/s|container = '.*'|container = '${IMAGE}'|" nextflow.config
 
       - name: Commit updated nextflow.config
         run: |

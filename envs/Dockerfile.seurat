@@ -41,6 +41,6 @@ RUN --mount=type=secret,id=gh_token,env=GITHUB_PAT,required=false \
         remotes::install_github(c("satijalab/seurat-data", "satijalab/azimuth", \
                                   "satijalab/seurat-wrappers", "immunogenomics/presto", \
                                   "bnprks/BPCells/r"), upgrade = "never", Ncpus = parallel::detectCores()); \
-        IRkernel::installspec(name = "ir", displayname = "R (Seurat)", user = FALSE); \
+        IRkernel::installspec(name = "r_seurat", displayname = "r_seurat", user = FALSE); \
     ' && \
     apt-get clean
