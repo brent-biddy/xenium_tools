@@ -60,6 +60,8 @@ RUN pip install \
     ipykernel \
     nbformat \
     nbclient \
+    nbconvert \
+    papermill \
     ipywidgets \
     uv
 
