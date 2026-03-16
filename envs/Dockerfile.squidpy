@@ -58,6 +58,9 @@ RUN pip install \
     "spatialdata[extra]>=0.2.7" \
     ome-zarr \
     ipykernel \
+    nbformat \
+    nbclient \
+    ipywidgets \
     uv
 
 # Register Jupyter kernel
