@@ -4,6 +4,7 @@ FROM python:3.10-slim
 ENV PYTHONUNBUFFERED=1
 ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 ENV MPLCONFIGDIR=/tmp/matplotlib
+ENV XDG_CACHE_HOME=/tmp/.cache
 ENV PATH=/root/.local/bin:$PATH
 
 # Dask memory tuning
