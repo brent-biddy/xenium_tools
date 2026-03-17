@@ -80,7 +80,7 @@ process execute_squidpy_notebook {
 
     script:
     """
-    quarto render ${notebook} -P xenium_zarr:${spatialdata_zarr} --output squidpy_report.html
+    XDG_CACHE_HOME=\$PWD quarto render ${notebook} -P xenium_zarr:${spatialdata_zarr} --output squidpy_report.html
     """
     stub:
     """
