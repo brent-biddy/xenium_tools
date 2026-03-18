@@ -1,6 +1,8 @@
 ---
 title: "Squidpy Workflow"
-format: html
+format:
+  html:
+    embed-resources: true
 jupyter: python_squidpy
 execute:
     error: true
