@@ -54,6 +54,8 @@ RUN pip install \
     "zarr<3" \
     "dask[complete]" \
     distributed \
+    igraph \
+    leidenalg \
     squidpy \
     "spatialdata[extra]>=0.2.7" \
     ome-zarr \
