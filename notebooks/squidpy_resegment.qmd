@@ -1,0 +1,190 @@
+---
+title: "Nuclear Segmentation using Cellpose & Squidpy"
+author: ""
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    self-contained: true
+    theme: cosmo
+    embed-resources: true
+execute:
+  error: true
+jupyter: squidpy
+---
+
+```{python}
+#| tags: [parameters]
+
+cell_id = "oijndpho-1"
+zarr_path = "./roi_1_spatialdata.zarr"   # Path to your Zarr store
+image_key = "morphology_focus"           # Key of the image element in the SpatialData object
+table_key = "table"                      # Key of the AnnData table in the SpatialData object
+
+channel = 0                              # Channel index to segment (e.g., DAPI = 0)
+segment_key = "segmented_cellpose"       # Key used to store segmentation output
+crop_size = 200                          # Side length of the square crop in pixels
+
+# Cellpose parameters
+model_type = "nuclei"      # "nuclei", "cyto", or "cyto2"
+diameter = None            # Expected nucleus diameter in pixels; None = auto-estimate
+flow_threshold = 0.4       # Flow error threshold for filtering detections
+cellprob_threshold = 0.0   # Minimum cell probability threshold
+use_gpu = False            # Set to True if a CUDA-compatible GPU is available
+```
+
+```{python}
+import numpy as np
+
+import spatialdata as sd
+import spatialdata_io
+import spatialdata_plot  # registers the .pl accessor on SpatialData
+from spatialdata.models import Labels2DModel
+
+import numpy as np
+
+import matplotlib.pyplot as plt
+
+import squidpy as sq
+
+import squidpy as sq
+from cellpose import models
+
+print(f"SpatialData version:     {sd.__version__}")
+print(f"spatialdata-io version:  {spatialdata_io.__version__}")
+print(f"spatialdata-plot version:{spatialdata_plot.__version__}")
+print(f"Squidpy version:         {sq.__version__}")
+```
+
+```{python}
+sdata = sd.read_zarr(zarr_path)
+
+print("SpatialData object:")
+print(sdata)
+```
+
+
+```{python}
+def cellpose_segmentation(
+    arr: np.ndarray,
+    model_type: str = "nuclei",
+    diameter: float = None,
+    flow_threshold: float = 0.4,
+    cellprob_threshold: float = 0.0,
+    use_gpu: bool = False,
+) -> np.ndarray:
+    """
+    Run Cellpose segmentation on an image array.
+
+    Uses the Cellpose v3+ API (CellposeModel).
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input image array (H, W).
+    model_type : str
+        Cellpose model to use: 'nuclei', 'cyto3', etc.
+    diameter : float or None
+        Expected diameter of cells/nuclei in pixels.
+        If None, Cellpose will estimate automatically.
+    flow_threshold : float
+        Flow error threshold for filtering cells.
+    cellprob_threshold : float
+        Minimum cell probability threshold.
+    use_gpu : bool
+        Whether to use GPU acceleration.
+
+    Returns
+    -------
+    np.ndarray
+        Integer label mask where each unique value > 0 is a segmented cell.
+    """
+    model = models.CellposeModel(model_type=model_type, gpu=use_gpu)
+
+    masks, flows, styles = model.eval(
+        arr,
+        diameter=diameter,
+        flow_threshold=flow_threshold,
+        cellprob_threshold=cellprob_threshold,
+    )
+
+    return masks
+```
+
+
+```{python}
+import zarr as _zarr
+
+adata = sdata.tables[table_key]
+coords = adata.obsm["spatial"]
+
+# Read the scale of the stored scale0 image relative to global coordinates.
+# For a full-res zarr this is [1, 1, 1]; for a correctly downsampled zarr it
+# encodes the downsampling factor.
+_zarr_img = _zarr.open(f"{zarr_path}/images/{image_key}", mode="r")
+_ngff = _zarr_img.attrs["multiscales"][0]["datasets"][0]["coordinateTransformations"][0]
+_stored_scale_y = _ngff["scale"][1]
+_stored_scale_x = _ngff["scale"][2]
+
+image_ds = sdata.images[image_key]["scale0"].ds
+image_da = image_ds[list(image_ds.data_vars)[0]]
+img_h, img_w = image_da.shape[1], image_da.shape[2]
+
+_full_res_h = img_h / _stored_scale_y
+_full_res_w = img_w / _stored_scale_x
+
+_coord_max_y = coords[:, 1].max()
+_coord_max_x = coords[:, 0].max()
+
+if _coord_max_y > _full_res_h or _coord_max_x > _full_res_w:
+    _scale_x = img_w / _coord_max_x
+    _scale_y = img_h / _coord_max_y
+    print(
+        f"Downsampled dataset detected: image ({img_w}×{img_h} px) is smaller than "
+        f"the coordinate extent ({_coord_max_x:.0f}×{_coord_max_y:.0f}). "
+        f"Applying empirical rescale ({_scale_x:.4f}, {_scale_y:.4f})."
+    )
+    pixel_coords = np.column_stack([coords[:, 0] * _scale_x, coords[:, 1] * _scale_y])
+else:
+    pixel_coords = np.column_stack([coords[:, 0] / _stored_scale_x, coords[:, 1] / _stored_scale_y])
+
+print(f"pixel_coords range: x [{pixel_coords[:,0].min():.1f}, {pixel_coords[:,0].max():.1f}], "
+      f"y [{pixel_coords[:,1].min():.1f}, {pixel_coords[:,1].max():.1f}]")
+print(f"image size: {img_w} × {img_h}")
+```
+
+
+```{python}
+# Look up the centroid of the target cell using rescaled pixel coordinates
+cell_idx = list(adata.obs['cell_id']).index(cell_id)
+cx, cy = int(pixel_coords[cell_idx, 0]), int(pixel_coords[cell_idx, 1])  # pixel-space (x, y)
+
+print(f"Cell '{cell_id}' centroid: x={cx:.1f}, y={cy:.1f}")
+```
+
+
+```{python}
+img_full = sq.im.ImageContainer(sd.get_pyramid_levels(sdata[image_key], n=0), layer="image")
+radius = crop_size // 2
+img = img_full.crop_center(y=cy, x=cx, radius=radius)
+img.show()
+```
+
+
+```{python}
+sq.im.segment(img, layer="image", channel=0, method=cellpose_segmentation)
+```
+
+
+```{python}
+print(img)
+print(f"Number of segments in crop: {len(np.unique(img['segmented_custom']))}")
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 20))
+img.show("image", channel=0, ax=axes[0])
+_ = axes[0].set_title("DAPI")
+img.show("segmented_custom", cmap="jet", interpolation="none", ax=axes[1])
+_ = axes[1].set_title("Cellpose segmentation")
+```
