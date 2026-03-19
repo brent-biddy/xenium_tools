@@ -19,7 +19,7 @@ jupyter: squidpy
 #| tags: [parameters]
 
 cell_id = "oijndpho-1"
-zarr_path = "./roi_1_spatialdata.zarr"   # Path to your Zarr store
+xenium_zarr = "./roi_1_spatialdata.zarr"   # Path to your Zarr store
 image_key = "morphology_focus"           # Key of the image element in the SpatialData object
 table_key = "table"                      # Key of the AnnData table in the SpatialData object
 
@@ -43,11 +43,7 @@ import spatialdata_io
 import spatialdata_plot  # registers the .pl accessor on SpatialData
 from spatialdata.models import Labels2DModel
 
-import numpy as np
-
 import matplotlib.pyplot as plt
-
-import squidpy as sq
 
 import squidpy as sq
 from cellpose import models
@@ -59,7 +55,7 @@ print(f"Squidpy version:         {sq.__version__}")
 ```
 
 ```{python}
-sdata = sd.read_zarr(zarr_path)
+sdata = sd.read_zarr(xenium_zarr)
 
 print("SpatialData object:")
 print(sdata)
@@ -123,7 +119,7 @@ coords = adata.obsm["spatial"]
 # Read the scale of the stored scale0 image relative to global coordinates.
 # For a full-res zarr this is [1, 1, 1]; for a correctly downsampled zarr it
 # encodes the downsampling factor.
-_zarr_img = _zarr.open(f"{zarr_path}/images/{image_key}", mode="r")
+_zarr_img = _zarr.open(f"{xenium_zarr}/images/{image_key}", mode="r")
 _ngff = _zarr_img.attrs["multiscales"][0]["datasets"][0]["coordinateTransformations"][0]
 _stored_scale_y = _ngff["scale"][1]
 _stored_scale_x = _ngff["scale"][2]
