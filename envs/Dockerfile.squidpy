@@ -57,6 +57,7 @@ RUN pip install \
     igraph \
     leidenalg \
     squidpy \
+    cellpose \
     "spatialdata[extra]>=0.2.7" \
     ome-zarr \
     ipykernel \
