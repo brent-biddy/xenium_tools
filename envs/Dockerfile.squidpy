@@ -68,6 +68,9 @@ RUN pip install \
     ipywidgets \
     uv
 
+# Pre-download Cellpose model
+RUN python -c "from cellpose import models; models.CellposeModel(model_type='cyto3')"
+
 # Register Jupyter kernel
 RUN python -m ipykernel install --sys-prefix --name python_squidpy --display-name "python_squidpy"
 

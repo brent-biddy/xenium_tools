@@ -28,7 +28,7 @@ segment_key = "segmented_cellpose"       # Key used to store segmentation output
 crop_size = 200                          # Side length of the square crop in pixels
 
 # Cellpose parameters
-model_type = "nuclei"      # "nuclei", "cyto", or "cyto2"
+model_type = "cyto3"       # "cyto3", "cyto2", "cyto", or "nuclei"
 diameter = None            # Expected nucleus diameter in pixels; None = auto-estimate
 flow_threshold = 0.4       # Flow error threshold for filtering detections
 cellprob_threshold = 0.0   # Minimum cell probability threshold
@@ -65,7 +65,7 @@ print(sdata)
 ```{python}
 def cellpose_segmentation(
     arr: np.ndarray,
-    model_type: str = "nuclei",
+    model_type: str = "cyto3",
     diameter: float = None,
     flow_threshold: float = 0.4,
     cellprob_threshold: float = 0.0,
