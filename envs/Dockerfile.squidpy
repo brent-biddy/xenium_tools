@@ -72,7 +72,8 @@ RUN pip install \
 # HPC Singularity/Apptainer home-directory bind-mounts don't shadow it.
 ENV CELLPOSE_LOCAL_MODELS_PATH=/opt/cellpose_models
 RUN mkdir -p /opt/cellpose_models && \
-    python -c "from cellpose import models; models.CellposeModel(model_type='cyto3')"
+    python -c "from cellpose import models; models.CellposeModel(model_type='cyto3')" && \
+    chmod -R 777 /opt/cellpose_models
 
 # Register Jupyter kernel
 RUN python -m ipykernel install --sys-prefix --name python_squidpy --display-name "python_squidpy"
