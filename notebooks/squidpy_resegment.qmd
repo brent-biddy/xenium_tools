@@ -28,7 +28,6 @@ segment_key = "segmented_cellpose"       # Key used to store segmentation output
 crop_size = 200                          # Side length of the square crop in pixels
 
 # Cellpose parameters
-model_type = "cyto3"       # "cyto3", "cyto2", "cyto", or "nuclei"
 diameter = None            # Expected nucleus diameter in pixels; None = auto-estimate
 flow_threshold = 0.4       # Flow error threshold for filtering detections
 cellprob_threshold = 0.0   # Minimum cell probability threshold
@@ -59,13 +58,20 @@ sdata = sd.read_zarr(xenium_zarr)
 
 print("SpatialData object:")
 print(sdata)
+
+_adata = sdata.tables[table_key]
+print(f"\nTable '{table_key}': {_adata.n_obs} cells")
+print(f"obsm keys: {list(_adata.obsm.keys())}")
+
+_img_ds = sdata.images[image_key]["scale0"].ds
+_img_da = _img_ds[list(_img_ds.data_vars)[0]]
+print(f"\nImage '{image_key}' shape (c, h, w): {tuple(_img_da.shape)}, dtype: {_img_da.dtype}")
 ```
 
 
 ```{python}
 def cellpose_segmentation(
     arr: np.ndarray,
-    model_type: str = "cyto3",
     diameter: float = None,
     flow_threshold: float = 0.4,
     cellprob_threshold: float = 0.0,
@@ -74,14 +80,13 @@ def cellpose_segmentation(
     """
     Run Cellpose segmentation on an image array.
 
-    Uses the Cellpose v3+ API (CellposeModel).
+    Uses the Cellpose v4+ API (CellposeModel). Model selection is not supported
+    in v4+ and is ignored.
 
     Parameters
     ----------
     arr : np.ndarray
         Input image array (H, W).
-    model_type : str
-        Cellpose model to use: 'nuclei', 'cyto3', etc.
     diameter : float or None
         Expected diameter of cells/nuclei in pixels.
         If None, Cellpose will estimate automatically.
@@ -97,7 +102,7 @@ def cellpose_segmentation(
     np.ndarray
         Integer label mask where each unique value > 0 is a segmented cell.
     """
-    model = models.CellposeModel(model_type=model_type, gpu=use_gpu)
+    model = models.CellposeModel(gpu=use_gpu)
 
     masks, flows, styles = model.eval(
         arr,
@@ -146,9 +151,18 @@ if _coord_max_y > _full_res_h or _coord_max_x > _full_res_w:
 else:
     pixel_coords = np.column_stack([coords[:, 0] / _stored_scale_x, coords[:, 1] / _stored_scale_y])
 
+print(f"NGFF scale: x={_stored_scale_x}, y={_stored_scale_y}")
+print(f"Image size: {img_w} × {img_h} px  |  Full-res equivalent: {_full_res_w:.0f} × {_full_res_h:.0f}")
+print(f"Coord extent: x_max={_coord_max_x:.1f}, y_max={_coord_max_y:.1f}")
 print(f"pixel_coords range: x [{pixel_coords[:,0].min():.1f}, {pixel_coords[:,0].max():.1f}], "
       f"y [{pixel_coords[:,1].min():.1f}, {pixel_coords[:,1].max():.1f}]")
-print(f"image size: {img_w} × {img_h}")
+
+_x_oob = (pixel_coords[:,0] < 0).sum() + (pixel_coords[:,0] >= img_w).sum()
+_y_oob = (pixel_coords[:,1] < 0).sum() + (pixel_coords[:,1] >= img_h).sum()
+if _x_oob > 0 or _y_oob > 0:
+    print(f"WARNING: {_x_oob} cells out of bounds in x, {_y_oob} out of bounds in y")
+else:
+    print("All pixel coordinates are within image bounds.")
 ```
 
 
@@ -157,30 +171,63 @@ print(f"image size: {img_w} × {img_h}")
 cell_idx = list(adata.obs['cell_id']).index(cell_id)
 cx, cy = int(pixel_coords[cell_idx, 0]), int(pixel_coords[cell_idx, 1])  # pixel-space (x, y)
 
-print(f"Cell '{cell_id}' centroid: x={cx:.1f}, y={cy:.1f}")
+print(f"Cell '{cell_id}' centroid: x={cx}, y={cy}")
+
+radius = crop_size // 2
+_x0, _x1 = cx - radius, cx + radius
+_y0, _y1 = cy - radius, cy + radius
+print(f"Crop window: x=[{_x0}, {_x1}], y=[{_y0}, {_y1}]")
+if _x0 < 0 or _y0 < 0 or _x1 > img_w or _y1 > img_h:
+    print(f"WARNING: crop window extends outside image bounds ({img_w} × {img_h})")
+else:
+    print("Crop window is fully within image bounds.")
 ```
 
 
 ```{python}
 img_full = sq.im.ImageContainer(sd.get_pyramid_levels(sdata[image_key], n=0), layer="image")
-radius = crop_size // 2
 img = img_full.crop_center(y=cy, x=cx, radius=radius)
 img.show()
+
+_crop_arr = img["image"].data[:, :, 0, 0]
+print(f"Crop shape: {_crop_arr.shape}, dtype: {_crop_arr.dtype}")
+print(f"Pixel values — min: {_crop_arr.min()}, max: {_crop_arr.max()}, mean: {_crop_arr.mean():.1f}")
+if _crop_arr.max() == 0:
+    print("WARNING: crop is all zeros — cellpose will not detect anything")
 ```
 
 
 ```{python}
-sq.im.segment(img, layer="image", channel=0, method=cellpose_segmentation)
+sq.im.segment(img, layer="image", channel=0, method=cellpose_segmentation, layer_added=segment_key)
+```
+
+
+```{python}
+# Diagnostic: compare sq.im.segment result vs direct cellpose call with parameter block values
+_crop_arr = img["image"].data[:, :, 0, 0]
+_masks_direct = cellpose_segmentation(
+    _crop_arr,
+    diameter=diameter,
+    flow_threshold=flow_threshold,
+    cellprob_threshold=cellprob_threshold,
+    use_gpu=use_gpu,
+)
+_n_squidpy = len(np.unique(img[segment_key])) - 1  # subtract background
+_n_direct  = len(np.unique(_masks_direct)) - 1
+print(f"sq.im.segment (default params):      {_n_squidpy} cell(s) detected")
+print(f"Direct cellpose (parameter block):   {_n_direct} cell(s) detected")
+if _n_direct > _n_squidpy:
+    print("NOTE: parameter block values are not being forwarded via sq.im.segment")
 ```
 
 
 ```{python}
 print(img)
-print(f"Number of segments in crop: {len(np.unique(img['segmented_custom']))}")
+print(f"Number of segments in crop: {len(np.unique(img[segment_key]))}")
 
 fig, axes = plt.subplots(1, 2, figsize=(10, 20))
 img.show("image", channel=0, ax=axes[0])
 _ = axes[0].set_title("DAPI")
-img.show("segmented_custom", cmap="jet", interpolation="none", ax=axes[1])
+img.show(segment_key, cmap="jet", interpolation="none", ax=axes[1])
 _ = axes[1].set_title("Cellpose segmentation")
 ```
