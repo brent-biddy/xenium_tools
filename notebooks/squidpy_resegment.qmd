@@ -116,43 +116,32 @@ def cellpose_segmentation(
 
 
 ```{python}
-import zarr as _zarr
+from spatialdata.transformations import get_transformation
 
 adata = sdata.tables[table_key]
 coords = adata.obsm["spatial"]
 
-# Read the scale of the stored scale0 image relative to global coordinates.
-# For a full-res zarr this is [1, 1, 1]; for a correctly downsampled zarr it
-# encodes the downsampling factor.
-_zarr_img = _zarr.open(f"{xenium_zarr}/images/{image_key}", mode="r")
-_ngff = _zarr_img.attrs["multiscales"][0]["datasets"][0]["coordinateTransformations"][0]
-_stored_scale_y = _ngff["scale"][1]
-_stored_scale_x = _ngff["scale"][2]
+# Get the pixel→global transformation from spatialdata.
+# For Xenium this encodes the physical pixel size (~0.2125 µm/px).
+_transform = get_transformation(sdata.images[image_key], to_coordinate_system="global")
+_scale_vals = _transform.scale  # (c, y, x) or (y, x) depending on spatialdata version
+if len(_scale_vals) == 3:
+    _pixel_size_y, _pixel_size_x = float(_scale_vals[1]), float(_scale_vals[2])
+else:
+    _pixel_size_y, _pixel_size_x = float(_scale_vals[0]), float(_scale_vals[1])
 
 image_ds = sdata.images[image_key]["scale0"].ds
 image_da = image_ds[list(image_ds.data_vars)[0]]
 img_h, img_w = image_da.shape[1], image_da.shape[2]
 
-_full_res_h = img_h / _stored_scale_y
-_full_res_w = img_w / _stored_scale_x
+# Spatial coords are in global (physical) units; divide by pixel size to get pixel indices.
+pixel_coords = np.column_stack([coords[:, 0] / _pixel_size_x, coords[:, 1] / _pixel_size_y])
 
 _coord_max_y = coords[:, 1].max()
 _coord_max_x = coords[:, 0].max()
 
-if _coord_max_y > _full_res_h or _coord_max_x > _full_res_w:
-    _scale_x = img_w / _coord_max_x
-    _scale_y = img_h / _coord_max_y
-    print(
-        f"Downsampled dataset detected: image ({img_w}×{img_h} px) is smaller than "
-        f"the coordinate extent ({_coord_max_x:.0f}×{_coord_max_y:.0f}). "
-        f"Applying empirical rescale ({_scale_x:.4f}, {_scale_y:.4f})."
-    )
-    pixel_coords = np.column_stack([coords[:, 0] * _scale_x, coords[:, 1] * _scale_y])
-else:
-    pixel_coords = np.column_stack([coords[:, 0] / _stored_scale_x, coords[:, 1] / _stored_scale_y])
-
-print(f"NGFF scale: x={_stored_scale_x}, y={_stored_scale_y}")
-print(f"Image size: {img_w} × {img_h} px  |  Full-res equivalent: {_full_res_w:.0f} × {_full_res_h:.0f}")
+print(f"Pixel size from transform: x={_pixel_size_x}, y={_pixel_size_y}")
+print(f"Image size: {img_w} × {img_h} px")
 print(f"Coord extent: x_max={_coord_max_x:.1f}, y_max={_coord_max_y:.1f}")
 print(f"pixel_coords range: x [{pixel_coords[:,0].min():.1f}, {pixel_coords[:,0].max():.1f}], "
       f"y [{pixel_coords[:,1].min():.1f}, {pixel_coords[:,1].max():.1f}]")
@@ -191,9 +180,6 @@ img.show()
 
 _crop_arr = img["image"].data[:, :, 0, 0]
 print(f"Crop shape: {_crop_arr.shape}, dtype: {_crop_arr.dtype}")
-print(f"Pixel values — min: {_crop_arr.min()}, max: {_crop_arr.max()}, mean: {_crop_arr.mean():.1f}")
-if _crop_arr.max() == 0:
-    print("WARNING: crop is all zeros — cellpose will not detect anything")
 ```
 
 
