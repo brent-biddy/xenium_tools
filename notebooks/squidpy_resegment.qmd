@@ -180,12 +180,55 @@ else:
 
 
 ```{python}
+# Overview plot: whole tissue at lowest pyramid level with crop region highlighted
+_overview_da = sd.get_pyramid_levels(sdata[image_key], n=-1)
+_ov = np.array(_overview_da[list(_overview_da.data_vars)[0]][channel])
+_ov_h, _ov_w = _ov.shape
+
+_sx = _ov_w / img_w  # scale factor from scale0 → overview in x
+_sy = _ov_h / img_h  # scale factor from scale0 → overview in y
+
+fig, ax = plt.subplots(figsize=(8, 8))
+ax.imshow(_ov, cmap="gray", origin="upper")
+ax.add_patch(plt.Rectangle(
+    (_x0 * _sx, _y0 * _sy), crop_size * _sx, crop_size * _sy,
+    linewidth=1.5, edgecolor="red", facecolor="none"
+))
+ax.set_title(f"Tissue overview — crop location for '{cell_id}'")
+ax.axis("off")
+plt.tight_layout()
+plt.show()
+```
+
+
+```{python}
 img_full = sq.im.ImageContainer(sd.get_pyramid_levels(sdata[image_key], n=0), layer="image")
 img = img_full.crop_center(y=cy, x=cx, radius=radius)
 img.show()
 
 _crop_arr = img["image"].data[:, :, 0, 0]
 print(f"Crop shape: {_crop_arr.shape}, dtype: {_crop_arr.dtype}")
+```
+
+
+```{python}
+# Crop plot: DAPI channel with original cell boundary highlighted in red.
+# Slice cell_labels lazily to the crop region to find the target cell's label.
+_labels_da = sdata.images[image_key]["scale0"].ds  # reuse scale0 coords for slicing
+_cell_labels_da = sdata["cell_labels"]["scale0"].ds
+_cell_labels_da = _cell_labels_da[list(_cell_labels_da.data_vars)[0]]
+_label_crop = _cell_labels_da[_y0:_y1, _x0:_x1].values  # (H, W), loads only this tile
+
+_target_label = _label_crop[radius, radius]
+
+fig, ax = plt.subplots(figsize=(6, 6))
+ax.imshow(_crop_arr, cmap="gray", origin="upper")
+if _target_label > 0:
+    ax.contour(_label_crop == _target_label, levels=[0.5], colors="red", linewidths=1.5)
+ax.set_title(f"Crop — cell '{cell_id}' (label {_target_label})")
+ax.axis("off")
+plt.tight_layout()
+plt.show()
 ```
 
 
