@@ -25,7 +25,7 @@ table_key = "table"                      # Key of the AnnData table in the Spati
 
 channel = 0                              # Channel index to segment (e.g., DAPI = 0)
 segment_key = "segmented_cellpose"       # Key used to store segmentation output
-crop_size = 1200                         # Side length of the square crop in pixels (~252 µm at 0.21 µm/px; adjust to fit your follicle)
+crop_size = 600                          # Side length of the square crop in pixels (~126 µm at 0.21 µm/px; adjust to fit your follicle)
 
 # Cellpose parameters
 diameter = None            # Expected nucleus diameter in pixels; None = auto-estimate
