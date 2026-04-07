@@ -289,15 +289,14 @@ fig, axes = plt.subplots(2, 2, figsize=(12, 12))
 img.show("image", channel=0, ax=axes[0, 0])
 _ = axes[0, 0].set_title("DAPI")
 
+from skimage.segmentation import find_boundaries
+
 for _ax, _labels, _title in [
     (axes[0, 1], _xenium_label_crop,   "Xenium segmentation"),
     (axes[1, 0], _cellpose_label_crop, "Cellpose segmentation"),
 ]:
-    _ax.set_facecolor("black")
-    _ax.contour(_labels, levels=np.unique(_labels[_labels > 0]) - 0.5,
-                colors="white", linewidths=0.5)
-    _ax.set_xlim(0, _labels.shape[1])
-    _ax.set_ylim(_labels.shape[0], 0)
+    _bounds = find_boundaries(_labels, mode="outer")
+    _ax.imshow(_bounds, cmap="gray", origin="upper")
     _ax.axis("off")
     _ = _ax.set_title(_title)
 
