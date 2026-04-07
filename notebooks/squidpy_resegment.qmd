@@ -284,25 +284,6 @@ sq.im.segment(img, layer="image", channel=0, method=cellpose_segmentation, layer
 
 
 ```{python}
-# Diagnostic: compare sq.im.segment result vs direct cellpose call with parameter block values
-_crop_arr = img["image"].data[:, :, 0, 0]
-_masks_direct = cellpose_segmentation(
-    _crop_arr,
-    diameter=diameter,
-    flow_threshold=flow_threshold,
-    cellprob_threshold=cellprob_threshold,
-    use_gpu=use_gpu,
-)
-_n_squidpy = len(np.unique(img[segment_key])) - 1  # subtract background
-_n_direct  = len(np.unique(_masks_direct)) - 1
-print(f"sq.im.segment (default params):      {_n_squidpy} cell(s) detected")
-print(f"Direct cellpose (parameter block):   {_n_direct} cell(s) detected")
-if _n_direct > _n_squidpy:
-    print("NOTE: parameter block values are not being forwarded via sq.im.segment")
-```
-
-
-```{python}
 print(img)
 print(f"Number of segments in crop: {len(np.unique(img[segment_key]))}")
 
