@@ -25,7 +25,7 @@ table_key = "table"                      # Key of the AnnData table in the Spati
 
 channel = 0                              # Channel index to segment (e.g., DAPI = 0)
 segment_key = "segmented_cellpose"       # Key used to store segmentation output
-crop_size = 200                          # Side length of the square crop in pixels
+crop_size = 600                          # Side length of the square crop in pixels (~126 µm at 0.21 µm/px; adjust to fit your follicle)
 
 # Cellpose parameters
 diameter = None            # Expected nucleus diameter in pixels; None = auto-estimate
@@ -66,6 +66,9 @@ print(f"obsm keys: {list(_adata.obsm.keys())}")
 _img_ds = sdata.images[image_key]["scale0"].ds
 _img_da = _img_ds[list(_img_ds.data_vars)[0]]
 print(f"\nImage '{image_key}' shape (c, h, w): {tuple(_img_da.shape)}, dtype: {_img_da.dtype}")
+
+print(f"\nTable obs columns: {list(_adata.obs.columns)}")
+print(_adata.obs.head(2))
 ```
 
 
@@ -182,7 +185,7 @@ else:
 ```{python}
 # Overview plot: whole tissue at lowest pyramid level with crop region highlighted
 _overview_da = sd.get_pyramid_levels(sdata[image_key])[-1]
-_ov = np.array(_overview_da[list(_overview_da.data_vars)[0]][channel])
+_ov = np.array(_overview_da[channel])
 _ov_h, _ov_w = _ov.shape
 
 _sx = _ov_w / img_w  # scale factor from scale0 → overview in x
@@ -219,7 +222,15 @@ _cell_labels_da = sdata["cell_labels"]["scale0"].ds
 _cell_labels_da = _cell_labels_da[list(_cell_labels_da.data_vars)[0]]
 _label_crop = _cell_labels_da[_y0:_y1, _x0:_x1].values  # (H, W), loads only this tile
 
-_target_label = _label_crop[radius, radius]
+# Prefer looking up the integer label from obs (reliable) over pixel sampling (fragile)
+_instance_col = next((c for c in adata.obs.columns if "instance" in c.lower()), None)
+if _instance_col is not None:
+    _target_label = int(adata.obs[_instance_col].iloc[cell_idx])
+    print(f"Label from obs['{_instance_col}']: {_target_label}")
+else:
+    _target_label = int(_label_crop[radius, radius])
+    print(f"WARNING: no instance_id column found in obs — falling back to pixel sample. Label: {_target_label}")
+    print(f"  Available obs columns: {list(adata.obs.columns)}")
 
 fig, ax = plt.subplots(figsize=(6, 6))
 ax.imshow(_crop_arr, cmap="gray", origin="upper")
