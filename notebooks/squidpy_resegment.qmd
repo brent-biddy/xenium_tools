@@ -230,6 +230,11 @@ img.show()
 
 _crop_arr = img["image"].data[:, :, 0, 0]
 print(f"Crop shape: {_crop_arr.shape}, dtype: {_crop_arr.dtype}")
+
+# Diagnostic: print ImageContainer layer info to understand dimensions for adding new layers
+for _layer_name in img.data.data_vars:
+    _layer = img[_layer_name]
+    print(f"Layer '{_layer_name}': dims={_layer.dims}, shape={_layer.shape}, dtype={_layer.dtype}")
 ```
 
 
@@ -253,13 +258,12 @@ _circle_cy_px = _circle_row.geometry.y / _pixel_size_y - _y0
 _circle_r_px = _circle_row["radius"] / ((_pixel_size_x + _pixel_size_y) / 2)
 
 fig, ax = plt.subplots(figsize=(6, 6))
-ax.imshow(_crop_arr, cmap="gray", origin="upper")
+img.show("image", channel=0, ax=ax)
 ax.add_patch(plt.Circle(
     (_circle_cx_px, _circle_cy_px), _circle_r_px,
     linewidth=1.5, edgecolor="red", facecolor="none"
 ))
 ax.set_title(f"Crop — cell '{cell_id}'")
-ax.axis("off")
 plt.tight_layout()
 plt.show()
 ```
