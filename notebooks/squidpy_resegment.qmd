@@ -246,32 +246,19 @@ print(_circles.head(3))
 
 ```{python}
 # Crop plot: DAPI channel with original cell boundary highlighted in red.
-# Slice cell_labels lazily to the crop region to find the target cell's label.
-_labels_da = sdata.images[image_key]["scale0"].ds  # reuse scale0 coords for slicing
-_cell_labels_da = sdata["cell_labels"]["scale0"].ds
-_cell_labels_da = _cell_labels_da[list(_cell_labels_da.data_vars)[0]]
-_label_crop = _cell_labels_da[_y0:_y1, _x0:_x1].values  # (H, W), loads only this tile
-
-# Prefer looking up the integer label from obs (reliable) over pixel sampling (fragile).
-# Check spatialdata_attrs for the instance key, then fall back to searching column names.
-_sd_attrs = adata.uns.get("spatialdata_attrs", {})
-_instance_col = _sd_attrs.get("instance_key") or next(
-    (c for c in adata.obs.columns if "instance" in c.lower()), None
-)
-if _instance_col is not None:
-    _target_label = int(adata.obs[_instance_col].iloc[cell_idx])
-    print(f"Label from obs['{_instance_col}']: {_target_label}")
-else:
-    _target_label = int(_label_crop[radius, radius])
-    print(f"WARNING: could not determine instance key — falling back to pixel sample. Label: {_target_label}")
-    print(f"  spatialdata_attrs: {_sd_attrs}")
-    print(f"  obs columns: {list(adata.obs.columns)}")
+# Look up the cell circle geometry directly from cell_circles using cell_id.
+_circle_row = sdata["cell_circles"].loc[cell_id]
+_circle_cx_px = _circle_row.geometry.x / _pixel_size_x - _x0  # relative to crop origin
+_circle_cy_px = _circle_row.geometry.y / _pixel_size_y - _y0
+_circle_r_px = _circle_row["radius"] / ((_pixel_size_x + _pixel_size_y) / 2)
 
 fig, ax = plt.subplots(figsize=(6, 6))
 ax.imshow(_crop_arr, cmap="gray", origin="upper")
-if _target_label > 0:
-    ax.contour(_label_crop == _target_label, levels=[0.5], colors="red", linewidths=1.5)
-ax.set_title(f"Crop — cell '{cell_id}' (label {_target_label})")
+ax.add_patch(plt.Circle(
+    (_circle_cx_px, _circle_cy_px), _circle_r_px,
+    linewidth=1.5, edgecolor="red", facecolor="none"
+))
+ax.set_title(f"Crop — cell '{cell_id}'")
 ax.axis("off")
 plt.tight_layout()
 plt.show()
