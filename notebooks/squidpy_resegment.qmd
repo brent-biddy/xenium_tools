@@ -69,6 +69,7 @@ print(f"\nImage '{image_key}' shape (c, h, w): {tuple(_img_da.shape)}, dtype: {_
 
 print(f"\nTable obs columns: {list(_adata.obs.columns)}")
 print(_adata.obs.head(2))
+print(f"\nspatialdata_attrs: {_adata.uns.get('spatialdata_attrs', 'not found')}")
 ```
 
 
@@ -179,6 +180,24 @@ if _x0 < 0 or _y0 < 0 or _x1 > img_w or _y1 > img_h:
     print(f"WARNING: crop window extends outside image bounds ({img_w} × {img_h})")
 else:
     print("Crop window is fully within image bounds.")
+
+# --- Diagnostics: verify target cell and check for larger nearby cells ---
+_raw_x, _raw_y = coords[cell_idx, 0], coords[cell_idx, 1]
+print(f"\nTarget cell obs row:")
+print(adata.obs.iloc[[cell_idx]][['cell_id', 'cell_area', 'nucleus_area']].to_string())
+print(f"  raw micron coords:  x={_raw_x:.2f}, y={_raw_y:.2f}")
+print(f"  pixel coords:       x={cx}, y={cy}  (pixel_size: x={_pixel_size_x:.4f}, y={_pixel_size_y:.4f} µm/px)")
+
+_in_window = (
+    (pixel_coords[:, 0] >= _x0) & (pixel_coords[:, 0] < _x1) &
+    (pixel_coords[:, 1] >= _y0) & (pixel_coords[:, 1] < _y1)
+)
+_neighbors = adata.obs[_in_window].copy()
+_neighbors["px_x"] = pixel_coords[_in_window, 0].astype(int)
+_neighbors["px_y"] = pixel_coords[_in_window, 1].astype(int)
+print(f"\nCells in crop window ({_in_window.sum()} total) — top 10 by cell_area:")
+print(_neighbors[['cell_id', 'cell_area', 'nucleus_area', 'px_x', 'px_y']]
+      .sort_values('cell_area', ascending=False).head(10).to_string())
 ```
 
 
@@ -222,15 +241,20 @@ _cell_labels_da = sdata["cell_labels"]["scale0"].ds
 _cell_labels_da = _cell_labels_da[list(_cell_labels_da.data_vars)[0]]
 _label_crop = _cell_labels_da[_y0:_y1, _x0:_x1].values  # (H, W), loads only this tile
 
-# Prefer looking up the integer label from obs (reliable) over pixel sampling (fragile)
-_instance_col = next((c for c in adata.obs.columns if "instance" in c.lower()), None)
+# Prefer looking up the integer label from obs (reliable) over pixel sampling (fragile).
+# Check spatialdata_attrs for the instance key, then fall back to searching column names.
+_sd_attrs = adata.uns.get("spatialdata_attrs", {})
+_instance_col = _sd_attrs.get("instance_key") or next(
+    (c for c in adata.obs.columns if "instance" in c.lower()), None
+)
 if _instance_col is not None:
     _target_label = int(adata.obs[_instance_col].iloc[cell_idx])
     print(f"Label from obs['{_instance_col}']: {_target_label}")
 else:
     _target_label = int(_label_crop[radius, radius])
-    print(f"WARNING: no instance_id column found in obs — falling back to pixel sample. Label: {_target_label}")
-    print(f"  Available obs columns: {list(adata.obs.columns)}")
+    print(f"WARNING: could not determine instance key — falling back to pixel sample. Label: {_target_label}")
+    print(f"  spatialdata_attrs: {_sd_attrs}")
+    print(f"  obs columns: {list(adata.obs.columns)}")
 
 fig, ax = plt.subplots(figsize=(6, 6))
 ax.imshow(_crop_arr, cmap="gray", origin="upper")
