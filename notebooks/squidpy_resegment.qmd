@@ -56,20 +56,12 @@ print(f"Squidpy version:         {sq.__version__}")
 ```{python}
 sdata = sd.read_zarr(xenium_zarr)
 
-print("SpatialData object:")
-print(sdata)
-
 _adata = sdata.tables[table_key]
-print(f"\nTable '{table_key}': {_adata.n_obs} cells")
-print(f"obsm keys: {list(_adata.obsm.keys())}")
+print(f"Table '{table_key}': {_adata.n_obs} cells")
 
 _img_ds = sdata.images[image_key]["scale0"].ds
 _img_da = _img_ds[list(_img_ds.data_vars)[0]]
-print(f"\nImage '{image_key}' shape (c, h, w): {tuple(_img_da.shape)}, dtype: {_img_da.dtype}")
-
-print(f"\nTable obs columns: {list(_adata.obs.columns)}")
-print(_adata.obs.head(2))
-print(f"\nspatialdata_attrs: {_adata.uns.get('spatialdata_attrs', 'not found')}")
+print(f"Image '{image_key}' shape (c, h, w): {tuple(_img_da.shape)}, dtype: {_img_da.dtype}")
 ```
 
 
@@ -151,11 +143,6 @@ else:
 # Spatial coords are in global (physical) units; divide by pixel size to get pixel indices.
 pixel_coords = np.column_stack([coords[:, 0] / _pixel_size_x, coords[:, 1] / _pixel_size_y])
 
-print(f"Image size: {img_w} × {img_h} px")
-print(f"Coord extent: x_max={_coord_max_x:.1f}, y_max={_coord_max_y:.1f}")
-print(f"pixel_coords range: x [{pixel_coords[:,0].min():.1f}, {pixel_coords[:,0].max():.1f}], "
-      f"y [{pixel_coords[:,1].min():.1f}, {pixel_coords[:,1].max():.1f}]")
-
 _x_oob = (pixel_coords[:,0] < 0).sum() + (pixel_coords[:,0] >= img_w).sum()
 _y_oob = (pixel_coords[:,1] < 0).sum() + (pixel_coords[:,1] >= img_h).sum()
 if _x_oob > 0 or _y_oob > 0:
@@ -181,23 +168,6 @@ if _x0 < 0 or _y0 < 0 or _x1 > img_w or _y1 > img_h:
 else:
     print("Crop window is fully within image bounds.")
 
-# --- Diagnostics: verify target cell and check for larger nearby cells ---
-_raw_x, _raw_y = coords[cell_idx, 0], coords[cell_idx, 1]
-print(f"\nTarget cell obs row:")
-print(adata.obs.iloc[[cell_idx]][['cell_id', 'cell_area', 'nucleus_area']].to_string())
-print(f"  raw micron coords:  x={_raw_x:.2f}, y={_raw_y:.2f}")
-print(f"  pixel coords:       x={cx}, y={cy}  (pixel_size: x={_pixel_size_x:.4f}, y={_pixel_size_y:.4f} µm/px)")
-
-_in_window = (
-    (pixel_coords[:, 0] >= _x0) & (pixel_coords[:, 0] < _x1) &
-    (pixel_coords[:, 1] >= _y0) & (pixel_coords[:, 1] < _y1)
-)
-_neighbors = adata.obs[_in_window].copy()
-_neighbors["px_x"] = pixel_coords[_in_window, 0].astype(int)
-_neighbors["px_y"] = pixel_coords[_in_window, 1].astype(int)
-print(f"\nCells in crop window ({_in_window.sum()} total) — top 10 by cell_area:")
-print(_neighbors[['cell_id', 'cell_area', 'nucleus_area', 'px_x', 'px_y']]
-      .sort_values('cell_area', ascending=False).head(10).to_string())
 ```
 
 
