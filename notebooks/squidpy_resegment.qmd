@@ -244,7 +244,9 @@ for _ax, _labels, _title in [
     img.show("image", channel=0, ax=_ax)
     _bounds = find_boundaries(_labels, mode="outer")
     _bounds_rgba = np.zeros((*_bounds.shape, 4), dtype=float)
-    _bounds_rgba[_bounds, 0] = 1.0  # red channel
+    _bounds_rgba[_bounds, 0] = 1.0  # R
+    _bounds_rgba[_bounds, 1] = 1.0  # G
+    _bounds_rgba[_bounds, 2] = 1.0  # B
     _bounds_rgba[_bounds, 3] = 1.0  # alpha (opaque only at boundaries)
     _ax.imshow(_bounds_rgba, origin="upper")
     _ax.axis("off")
