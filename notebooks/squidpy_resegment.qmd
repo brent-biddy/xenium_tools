@@ -224,34 +224,10 @@ plt.show()
 
 
 ```{python}
-img_full = sq.im.ImageContainer(sd.get_pyramid_levels(sdata[image_key], n=0), layer="image")
-img = img_full.crop_center(y=cy, x=cx, radius=radius)
-img.show()
-
-_crop_arr = img["image"].data[:, :, 0, 0]
-print(f"Crop shape: {_crop_arr.shape}, dtype: {_crop_arr.dtype}")
-
-# Diagnostic: print ImageContainer layer info to understand dimensions for adding new layers
-for _layer_name in img.data.data_vars:
-    _layer = img[_layer_name]
-    print(f"Layer '{_layer_name}': dims={_layer.dims}, shape={_layer.shape}, dtype={_layer.dtype}")
-```
-
-
-```{python}
-# Diagnostic: inspect cell_circles structure to understand how to look up cell boundary by cell_id
-_circles = sdata["cell_circles"]
-print(f"cell_circles type: {type(_circles)}")
-print(f"cell_circles index dtype: {_circles.index.dtype}")
-print(f"cell_circles index[:5]: {list(_circles.index[:5])}")
-print(f"cell_circles columns: {list(_circles.columns)}")
-print(_circles.head(3))
-```
-
-
-```{python}
 # Crop plot: DAPI channel with original cell boundary highlighted in red.
 # Look up the cell circle geometry directly from cell_circles using cell_id.
+img_full = sq.im.ImageContainer(sd.get_pyramid_levels(sdata[image_key], n=0), layer="image")
+img = img_full.crop_center(y=cy, x=cx, radius=radius)
 _circle_row = sdata["cell_circles"].loc[cell_id]
 _circle_cx_px = _circle_row.geometry.x / _pixel_size_x - _x0  # relative to crop origin
 _circle_cy_px = _circle_row.geometry.y / _pixel_size_y - _y0
