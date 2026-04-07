@@ -181,7 +181,7 @@ else:
 
 ```{python}
 # Overview plot: whole tissue at lowest pyramid level with crop region highlighted
-_overview_da = sd.get_pyramid_levels(sdata[image_key], n=-1)
+_overview_da = sd.get_pyramid_levels(sdata[image_key])[-1]
 _ov = np.array(_overview_da[list(_overview_da.data_vars)[0]][channel])
 _ov_h, _ov_w = _ov.shape
 
