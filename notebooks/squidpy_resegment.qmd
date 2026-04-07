@@ -18,8 +18,8 @@ jupyter: squidpy
 ```{python}
 #| tags: [parameters]
 
-cell_id = "oijndpho-1"
-xenium_zarr = "./roi_1_spatialdata.zarr"   # Path to your Zarr store
+cell_id = ""
+xenium_zarr = ""   # Path to your Zarr store
 image_key = "morphology_focus"           # Key of the image element in the SpatialData object
 table_key = "table"                      # Key of the AnnData table in the SpatialData object
 
