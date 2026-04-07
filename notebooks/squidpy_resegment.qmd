@@ -280,7 +280,8 @@ print(f"Number of segments in crop: {len(np.unique(img[segment_key]))}")
 
 _xenium_labels_da = sdata["cell_labels"]["scale0"].ds
 _xenium_labels_da = _xenium_labels_da[list(_xenium_labels_da.data_vars)[0]]
-_xenium_label_crop = _xenium_labels_da[_y0:_y1, _x0:_x1].values
+_crop_h, _crop_w = img["image"].shape[0], img["image"].shape[1]
+_xenium_label_crop = _xenium_labels_da[_y0:_y0 + _crop_h, _x0:_x0 + _crop_w].values
 
 import xarray as xr
 img["xenium_labels"] = xr.DataArray(
