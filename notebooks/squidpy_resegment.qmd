@@ -22,6 +22,7 @@ cell_id = ""
 xenium_zarr = ""   # Path to your Zarr store
 image_key = "morphology_focus"           # Key of the image element in the SpatialData object
 table_key = "table"                      # Key of the AnnData table in the SpatialData object
+cell_boundary_key = "cell_boundaries"    # Key for the cell boundary shapes element
 
 channel = 0                              # Channel index to segment (e.g., DAPI = 0)
 segment_key = "segmented_cellpose"       # Key used to store segmentation output
@@ -153,62 +154,69 @@ else:
 
 
 ```{python}
-# Look up the centroid of the target cell using rescaled pixel coordinates
-cell_idx = list(adata.obs['cell_id']).index(cell_id)
-cx, cy = int(pixel_coords[cell_idx, 0]), int(pixel_coords[cell_idx, 1])  # pixel-space (x, y)
+# Look up the centroid of the target cell from its boundary polygon
+_cell_poly = sdata[cell_boundary_key].loc[cell_id].geometry
+cx_phys, cy_phys = _cell_poly.centroid.x, _cell_poly.centroid.y
+print(f"Cell '{cell_id}' centroid (physical): x={cx_phys:.2f} µm, y={cy_phys:.2f} µm")
 
-print(f"Cell '{cell_id}' centroid: x={cx}, y={cy}")
+# Compute bounding box in physical coordinates (crop_size is in pixels)
+_half_x = (crop_size / 2) * _pixel_size_x
+_half_y = (crop_size / 2) * _pixel_size_y
+x_min, x_max = cx_phys - _half_x, cx_phys + _half_x
+y_min, y_max = cy_phys - _half_y, cy_phys + _half_y
+print(f"Crop bounding box (physical): x=[{x_min:.2f}, {x_max:.2f}], y=[{y_min:.2f}, {y_max:.2f}]")
 
-radius = crop_size // 2
-_x0, _x1 = cx - radius, cx + radius
-_y0, _y1 = cy - radius, cy + radius
-print(f"Crop window: x=[{_x0}, {_x1}], y=[{_y0}, {_y1}]")
-if _x0 < 0 or _y0 < 0 or _x1 > img_w or _y1 > img_h:
-    print(f"WARNING: crop window extends outside image bounds ({img_w} × {img_h})")
+_img_x_max = img_w * _pixel_size_x
+_img_y_max = img_h * _pixel_size_y
+if x_min < 0 or y_min < 0 or x_max > _img_x_max or y_max > _img_y_max:
+    print(f"WARNING: crop extends outside image bounds (x=[0, {_img_x_max:.2f}], y=[0, {_img_y_max:.2f}])")
 else:
-    print("Crop window is fully within image bounds.")
+    print("Crop is fully within image bounds.")
+
+# Crop the full SpatialData object using spatialdata's bounding_box_query (physical coords).
+# This crops images, labels, and shapes together so they remain aligned.
+sdata_crop = sdata.query.bounding_box(
+    axes=["x", "y"],
+    min_coordinate=[x_min, y_min],
+    max_coordinate=[x_max, y_max],
+    target_coordinate_system="global",
+)
+print(f"Cropped SpatialData — images: {list(sdata_crop.images)}, labels: {list(sdata_crop.labels)}, shapes: {list(sdata_crop.shapes)}")
+
+_all_crop_elements = {**sdata_crop.images, **sdata_crop.labels, **sdata_crop.shapes}
+_missing = [k for k in ["cell_labels", cell_boundary_key] if k not in _all_crop_elements]
+if _missing:
+    print(f"WARNING: expected elements missing from crop: {_missing}")
 
 ```
 
 
 ```{python}
-# Overview plot: whole tissue at lowest pyramid level with crop region highlighted
-_overview_da = sd.get_pyramid_levels(sdata[image_key])[-1]
-_ov = np.array(_overview_da[channel])
-_ov_h, _ov_w = _ov.shape
-
-_sx = _ov_w / img_w  # scale factor from scale0 → overview in x
-_sy = _ov_h / img_h  # scale factor from scale0 → overview in y
-
+# Overview plot: whole tissue rendered by spatialdata-plot (auto-selects optimal pyramid level)
+# with crop bounding box highlighted in physical (global) coordinates.
 fig, ax = plt.subplots(figsize=(8, 8))
-ax.imshow(_ov, cmap="gray", origin="upper")
+sdata.pl.render_images(image_key, channel=channel).pl.show(ax=ax)
 ax.add_patch(plt.Rectangle(
-    (_x0 * _sx, _y0 * _sy), crop_size * _sx, crop_size * _sy,
+    (x_min, y_min), x_max - x_min, y_max - y_min,
     linewidth=1.5, edgecolor="red", facecolor="none"
 ))
 ax.set_title(f"Tissue overview — crop location for '{cell_id}'")
-ax.axis("off")
 plt.tight_layout()
 plt.show()
 ```
 
 
 ```{python}
-# Crop plot: DAPI channel with original cell boundary highlighted in red.
-# Look up the cell circle geometry directly from cell_circles using cell_id.
-img_full = sq.im.ImageContainer(sd.get_pyramid_levels(sdata[image_key], n=0), layer="image")
-img = img_full.crop_center(y=cy, x=cx, radius=radius)
-_circle_row = sdata["cell_circles"].loc[cell_id]
-_circle_cx_px = _circle_row.geometry.x / _pixel_size_x - _x0  # relative to crop origin
-_circle_cy_px = _circle_row.geometry.y / _pixel_size_y - _y0
-_circle_r_px = _circle_row["radius"] / ((_pixel_size_x + _pixel_size_y) / 2)
+# Crop plot: DAPI channel with cell boundary polygon highlighted in red.
+# Build ImageContainer from the already-cropped image (needed for segmentation below).
+_cropped_img_da = sd.get_pyramid_levels(sdata_crop[image_key], n=0)
+img = sq.im.ImageContainer(_cropped_img_da, layer="image")
 
+# Display via spatialdata-plot (renders in physical coords) and overlay the cell boundary
+# polygon directly — no coordinate conversion needed.
 fig, ax = plt.subplots(figsize=(6, 6))
-img.show("image", channel=0, ax=ax)
-ax.add_patch(plt.Circle(
-    (_circle_cx_px, _circle_cy_px), _circle_r_px,
-    linewidth=1.5, edgecolor="red", facecolor="none"
-))
+sdata_crop.pl.render_images(image_key, channel=channel).pl.show(ax=ax)
+ax.plot(*_cell_poly.exterior.xy, color="red", linewidth=1.5)
 ax.set_title(f"Crop — cell '{cell_id}'")
 plt.tight_layout()
 plt.show()
@@ -224,12 +232,16 @@ sq.im.segment(img, layer="image", channel=0, method=cellpose_segmentation, layer
 print(img)
 print(f"Number of segments in crop: {len(np.unique(img[segment_key]))}")
 
-_xenium_labels_da = sdata["cell_labels"]["scale0"].ds
-_xenium_labels_da = _xenium_labels_da[list(_xenium_labels_da.data_vars)[0]]
-_crop_h, _crop_w = img["image"].shape[0], img["image"].shape[1]
-_xenium_label_crop = _xenium_labels_da[_y0:_y0 + _crop_h, _x0:_x0 + _crop_w].values
+_xenium_labels_ds = sdata_crop["cell_labels"]["scale0"].ds
+_xenium_labels_da = _xenium_labels_ds[list(_xenium_labels_ds.data_vars)[0]]
+_xenium_label_crop = _xenium_labels_da.values
 
 _cellpose_label_crop = img[segment_key].data[:, :, 0, 0]
+
+print(f"Xenium label shape:   {_xenium_label_crop.shape}")
+print(f"Cellpose label shape: {tuple(_cellpose_label_crop.shape)}")
+if _xenium_label_crop.shape != tuple(_cellpose_label_crop.shape):
+    print("WARNING: shape mismatch — boundary overlays may not align.")
 
 from skimage.segmentation import find_boundaries
 
