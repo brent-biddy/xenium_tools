@@ -207,6 +207,7 @@ sdata_crop.pl.render_images(image_key, channel=channel_name).pl.show(ax=ax)
 _poly_xs = np.array(_cell_poly.exterior.coords)[:, 0] / _pixel_size_x
 _poly_ys = np.array(_cell_poly.exterior.coords)[:, 1] / _pixel_size_y
 ax.plot(_poly_xs, _poly_ys, color="red", linewidth=1.5)
+ax.get_legend().remove()
 ax.set_title(f"Crop — cell '{cell_id}'")
 plt.tight_layout()
 plt.show()
@@ -235,7 +236,7 @@ if _xenium_label_crop.shape != tuple(_cellpose_label_crop.shape):
 
 from skimage.segmentation import find_boundaries
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+fig, axes = plt.subplots(1, 2, figsize=(8, 4))
 
 for _ax, _labels, _title in [
     (axes[0], _xenium_label_crop,   "Xenium segmentation"),
