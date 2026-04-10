@@ -1,0 +1,255 @@
+---
+title: "Nuclear Segmentation using Cellpose & Squidpy"
+author: ""
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    self-contained: true
+    theme: cosmo
+    embed-resources: true
+execute:
+  error: true
+jupyter: squidpy
+---
+
+```{python}
+#| tags: [parameters]
+
+cell_id = ""
+xenium_zarr = ""   # Path to your Zarr store
+image_key = "morphology_focus"           # Key of the image element in the SpatialData object
+table_key = "table"                      # Key of the AnnData table in the SpatialData object
+cell_boundary_key = "cell_boundaries"    # Key for the cell boundary shapes element
+
+channel = 0                              # Channel index for segmentation (e.g., DAPI = 0)
+channel_name = "DAPI"                    # Channel name for spatialdata-plot rendering
+segment_key = "segmented_cellpose"       # Key used to store segmentation output
+crop_size = 600                          # Side length of the square crop in pixels
+pixel_size = 0.2125                      # µm/px at pyramid level 0 (from pyramid metadata table)
+
+# Cellpose parameters
+diameter = None            # Expected nucleus diameter in pixels; None = auto-estimate
+flow_threshold = 0.4       # Flow error threshold for filtering detections
+cellprob_threshold = 0.0   # Minimum cell probability threshold
+use_gpu = False            # Set to True if a CUDA-compatible GPU is available
+```
+
+```{python}
+import numpy as np
+
+import spatialdata as sd
+import spatialdata_io
+import spatialdata_plot  # registers the .pl accessor on SpatialData
+from spatialdata.models import Labels2DModel
+
+import matplotlib.pyplot as plt
+
+import squidpy as sq
+from cellpose import models
+
+print(f"SpatialData version:     {sd.__version__}")
+print(f"spatialdata-io version:  {spatialdata_io.__version__}")
+print(f"spatialdata-plot version:{spatialdata_plot.__version__}")
+print(f"Squidpy version:         {sq.__version__}")
+```
+
+```{python}
+sdata = sd.read_zarr(xenium_zarr)
+
+_adata = sdata.tables[table_key]
+print(f"Table '{table_key}': {_adata.n_obs} cells")
+
+_img_ds = sdata.images[image_key]["scale0"].ds
+_img_da = _img_ds[list(_img_ds.data_vars)[0]]
+print(f"Image '{image_key}' shape (c, h, w): {tuple(_img_da.shape)}, dtype: {_img_da.dtype}")
+```
+
+
+```{python}
+def cellpose_segmentation(
+    arr: np.ndarray,
+    diameter: float = None,
+    flow_threshold: float = 0.4,
+    cellprob_threshold: float = 0.0,
+    use_gpu: bool = False,
+) -> np.ndarray:
+    """
+    Run Cellpose segmentation on an image array.
+
+    Uses the Cellpose v4+ API (CellposeModel). Model selection is not supported
+    in v4+ and is ignored.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input image array (H, W).
+    diameter : float or None
+        Expected diameter of cells/nuclei in pixels.
+        If None, Cellpose will estimate automatically.
+    flow_threshold : float
+        Flow error threshold for filtering cells.
+    cellprob_threshold : float
+        Minimum cell probability threshold.
+    use_gpu : bool
+        Whether to use GPU acceleration.
+
+    Returns
+    -------
+    np.ndarray
+        Integer label mask where each unique value > 0 is a segmented cell.
+    """
+    model = models.CellposeModel(gpu=use_gpu)
+
+    masks, flows, styles = model.eval(
+        arr,
+        diameter=diameter,
+        flow_threshold=flow_threshold,
+        cellprob_threshold=cellprob_threshold,
+    )
+
+    return masks
+```
+
+
+```{python}
+adata = sdata.tables[table_key]
+coords = adata.obsm["spatial"]
+
+image_ds = sdata.images[image_key]["scale0"].ds
+image_da = image_ds[list(image_ds.data_vars)[0]]
+img_h, img_w = image_da.shape[1], image_da.shape[2]
+
+_pixel_size_x = pixel_size
+_pixel_size_y = pixel_size
+print(f"Pixel size: x={_pixel_size_x} µm/px, y={_pixel_size_y} µm/px")
+
+# Convert spatial coords (µm) to pixel indices for out-of-bounds check.
+pixel_coords = np.column_stack([coords[:, 0] / _pixel_size_x, coords[:, 1] / _pixel_size_y])
+
+_x_oob = (pixel_coords[:,0] < 0).sum() + (pixel_coords[:,0] >= img_w).sum()
+_y_oob = (pixel_coords[:,1] < 0).sum() + (pixel_coords[:,1] >= img_h).sum()
+if _x_oob > 0 or _y_oob > 0:
+    print(f"WARNING: {_x_oob} cells out of bounds in x, {_y_oob} out of bounds in y")
+else:
+    print("All pixel coordinates are within image bounds.")
+```
+
+
+```{python}
+# Look up the centroid of the target cell from its boundary polygon
+_cell_poly = sdata[cell_boundary_key].loc[cell_id].geometry
+cx_phys, cy_phys = _cell_poly.centroid.x, _cell_poly.centroid.y
+print(f"Cell '{cell_id}' centroid (physical): x={cx_phys:.2f} µm, y={cy_phys:.2f} µm")
+
+# Convert centroid to pixel space and compute bounding box in pixel coords.
+# The image has an Identity transform in spatialdata (global coord = pixel index),
+# so bounding_box_query must receive pixel coordinates.
+cx_px = cx_phys / _pixel_size_x
+cy_px = cy_phys / _pixel_size_y
+x_min = cx_px - crop_size / 2
+x_max = cx_px + crop_size / 2
+y_min = cy_px - crop_size / 2
+y_max = cy_px + crop_size / 2
+print(f"Cell '{cell_id}' centroid (pixel): x={cx_px:.1f}, y={cy_px:.1f}")
+print(f"Crop bounding box (pixel): x=[{x_min:.1f}, {x_max:.1f}], y=[{y_min:.1f}, {y_max:.1f}]")
+
+if x_min < 0 or y_min < 0 or x_max > img_w or y_max > img_h:
+    print(f"WARNING: crop extends outside image bounds ({img_w} × {img_h} px)")
+else:
+    print("Crop is fully within image bounds.")
+
+# Crop the full SpatialData object using spatialdata's bounding_box_query (physical coords).
+# This crops images, labels, and shapes together so they remain aligned.
+sdata_crop = sdata.query.bounding_box(
+    axes=["x", "y"],
+    min_coordinate=[x_min, y_min],
+    max_coordinate=[x_max, y_max],
+    target_coordinate_system="global",
+)
+print(f"Cropped SpatialData — images: {list(sdata_crop.images)}, labels: {list(sdata_crop.labels)}, shapes: {list(sdata_crop.shapes)}")
+
+_all_crop_elements = {**sdata_crop.images, **sdata_crop.labels, **sdata_crop.shapes}
+_missing = [k for k in ["cell_labels", cell_boundary_key] if k not in _all_crop_elements]
+if _missing:
+    print(f"WARNING: expected elements missing from crop: {_missing}")
+
+```
+
+
+```{python}
+# Overview plot: whole tissue rendered by spatialdata-plot (auto-selects optimal pyramid level)
+# with crop bounding box highlighted in physical (global) coordinates.
+fig, ax = plt.subplots(figsize=(8, 8))
+sdata.pl.render_images(image_key, channel=channel_name).pl.show(ax=ax)
+ax.add_patch(plt.Rectangle(
+    (x_min, y_min), crop_size, crop_size,
+    linewidth=1.5, edgecolor="red", facecolor="none"
+))
+ax.set_title(f"Tissue overview — crop location for '{cell_id}'")
+plt.tight_layout()
+plt.show()
+```
+
+
+```{python}
+# Crop plot: segmentation channel with cell boundary polygon highlighted in red.
+# Build ImageContainer from the already-cropped image (needed for segmentation below).
+_cropped_img_da = sd.get_pyramid_levels(sdata_crop[image_key], n=0)
+img = sq.im.ImageContainer(_cropped_img_da, layer="image")
+
+# Display via spatialdata-plot (renders in physical coords) and overlay the cell boundary
+# polygon directly — no coordinate conversion needed.
+fig, ax = plt.subplots(figsize=(6, 6))
+sdata_crop.pl.render_images(image_key, channel=channel_name).pl.show(ax=ax)
+_poly_xs = np.array(_cell_poly.exterior.coords)[:, 0] / _pixel_size_x
+_poly_ys = np.array(_cell_poly.exterior.coords)[:, 1] / _pixel_size_y
+ax.plot(_poly_xs, _poly_ys, color="red", linewidth=1.5)
+ax.get_legend().remove()
+ax.set_title(f"Crop — cell '{cell_id}'")
+plt.tight_layout()
+plt.show()
+```
+
+
+```{python}
+sq.im.segment(img, layer="image", channel=channel, method=cellpose_segmentation, layer_added=segment_key)
+```
+
+
+```{python}
+print(img)
+print(f"Number of segments in crop: {len(np.unique(img[segment_key]))}")
+
+_xenium_labels_ds = sdata_crop["cell_labels"]["scale0"].ds
+_xenium_labels_da = _xenium_labels_ds[list(_xenium_labels_ds.data_vars)[0]]
+_xenium_label_crop = _xenium_labels_da.values
+
+_cellpose_label_crop = img[segment_key].data[:, :, 0, 0]
+
+print(f"Xenium label shape:   {_xenium_label_crop.shape}")
+print(f"Cellpose label shape: {tuple(_cellpose_label_crop.shape)}")
+if _xenium_label_crop.shape != tuple(_cellpose_label_crop.shape):
+    print("WARNING: shape mismatch — boundary overlays may not align.")
+
+from skimage.segmentation import find_boundaries
+
+fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+
+for _ax, _labels, _title in [
+    (axes[0], _xenium_label_crop,   "Xenium segmentation"),
+    (axes[1], _cellpose_label_crop, "Cellpose segmentation"),
+]:
+    img.show("image", channel=channel, ax=_ax)
+    _bounds = find_boundaries(_labels, mode="outer")
+    _bounds_rgba = np.zeros((*_bounds.shape, 4), dtype=float)
+    _bounds_rgba[_bounds, 0] = 1.0  # R
+    _bounds_rgba[_bounds, 1] = 1.0  # G
+    _bounds_rgba[_bounds, 2] = 1.0  # B
+    _bounds_rgba[_bounds, 3] = 1.0  # alpha (opaque only at boundaries)
+    _ax.imshow(_bounds_rgba, origin="upper")
+    _ax.axis("off")
+    _ = _ax.set_title(_title)
+```

@@ -122,6 +122,38 @@ process execute_squidpy_notebook {
     """
 }
 
+process execute_squidpy_resegment {
+
+    tag "${sample_name}"
+    label 'squidpy'
+
+    time = { 15.m * (1 + task.attempt) }
+
+    input:
+    tuple val(sample_name), path(spatialdata_zarr)
+    path(notebook)
+    val(cell_id)
+
+    output:
+    tuple val(sample_name), path("squidpy_resegment_report.html"), emit: html
+
+    publishDir "${params.output_path}/results/${sample_name}",
+        pattern: "squidpy_resegment_report.html",
+        saveAs: { "${sample_name}_squidpy_resegment_report.html" },
+        mode: 'copy'
+
+    script:
+    """
+    export XDG_CACHE_HOME="./.xdg_cache_home"
+    export XDG_DATA_HOME="./.xdg_data_home"
+    quarto render ${notebook} -P xenium_zarr:${spatialdata_zarr} -P cell_id:${cell_id} --output squidpy_resegment_report.html
+    """
+    stub:
+    """
+    touch squidpy_resegment_report.html
+    """
+}
+
 workflow NOTEBOOK_EXECUTION {
     take:
         seurat_rds_ch    // [sample_name, rds] - used for qc_plots and score_markers
@@ -161,5 +193,10 @@ workflow NOTEBOOK_EXECUTION {
             squidpy_marker_nb = file("${projectDir}/notebooks/squidpy_marker_workflow.qmd")
             squidpy_marker_yaml = file(params.squidpy_marker_yaml)
             execute_squidpy_marker_workflow(spatialdata_ch, squidpy_marker_nb, squidpy_marker_yaml)
+        }
+
+        if (params.run_squidpy_resegment) {
+            squidpy_resegment_nb = file("${projectDir}/notebooks/squidpy_resegment.qmd")
+            execute_squidpy_resegment(spatialdata_ch, squidpy_resegment_nb, params.resegment_cell_id)
         }
 }
