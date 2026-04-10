@@ -195,7 +195,7 @@ plt.show()
 
 
 ```{python}
-# Crop plot: DAPI channel with cell boundary polygon highlighted in red.
+# Crop plot: segmentation channel with cell boundary polygon highlighted in red.
 # Build ImageContainer from the already-cropped image (needed for segmentation below).
 _cropped_img_da = sd.get_pyramid_levels(sdata_crop[image_key], n=0)
 img = sq.im.ImageContainer(_cropped_img_da, layer="image")
@@ -215,7 +215,7 @@ plt.show()
 
 
 ```{python}
-sq.im.segment(img, layer="image", channel=0, method=cellpose_segmentation, layer_added=segment_key)
+sq.im.segment(img, layer="image", channel=channel, method=cellpose_segmentation, layer_added=segment_key)
 ```
 
 
@@ -242,7 +242,7 @@ for _ax, _labels, _title in [
     (axes[0], _xenium_label_crop,   "Xenium segmentation"),
     (axes[1], _cellpose_label_crop, "Cellpose segmentation"),
 ]:
-    img.show("image", channel=0, ax=_ax)
+    img.show("image", channel=channel, ax=_ax)
     _bounds = find_boundaries(_labels, mode="outer")
     _bounds_rgba = np.zeros((*_bounds.shape, 4), dtype=float)
     _bounds_rgba[_bounds, 0] = 1.0  # R
