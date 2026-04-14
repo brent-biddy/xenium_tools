@@ -3,7 +3,7 @@ title: "Squidpy Workflow"
 format:
   html:
     embed-resources: true
-jupyter: squidpy
+jupyter: python_squidpy
 execute:
     error: true
 ---

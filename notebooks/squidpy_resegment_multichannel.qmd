@@ -12,7 +12,7 @@ format:
     embed-resources: true
 execute:
   error: true
-jupyter: squidpy
+jupyter: python_squidpy
 ---
 
 ```{python}
