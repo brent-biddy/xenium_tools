@@ -295,7 +295,7 @@ for _ax, _labels, _title in [
     (axes[0], _xenium_label_crop,   "Xenium segmentation"),
     (axes[1], _cellpose_label_crop, "Cellpose segmentation"),
 ]:
-    sdata_crop.pl.render_images(image_key, channel=cyto_channel_name).pl.show(ax=_ax, legend_loc=None, colorbar=False)
+    img.show("image", channel=cyto_channel, ax=_ax)
     _bounds = find_boundaries(_labels, mode="outer")
     _bounds_rgba = np.zeros((*_bounds.shape, 4), dtype=float)
     _bounds_rgba[_bounds, 0] = 1.0  # R
