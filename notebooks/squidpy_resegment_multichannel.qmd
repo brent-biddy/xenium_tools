@@ -303,7 +303,7 @@ for _ax, _label_key, _title in [
     (axes[1], "cellpose_labels",  "Cellpose segmentation"),
 ]:
     sdata_crop.pl.render_images(image_key, channel=cyto_channel_name)\
-        .pl.render_labels(_label_key, fill_alpha=0, color="white")\
+        .pl.render_labels(_label_key, fill_alpha=0.0, outline_alpha=1.0, color="white")\
         .pl.show(ax=_ax, legend_loc=None, colorbar=False)
     _ax.set_title(_title)
 ```
