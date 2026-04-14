@@ -90,8 +90,8 @@ def cellpose_segmentation(
     Parameters
     ----------
     arr : np.ndarray
-        Input image array (H, W, 1, Z). Passed via channel=None in sq.im.segment.
-        Channels are in the Z dimension due to how squidpy builds the ImageContainer.
+        Input image array (H, W, n_channels). Passed via channel=None in sq.im.segment;
+        squidpy squeezes the C=1 dim before calling, leaving channels in the last axis.
     cyto_channel_idx : int
         Index of the cytoplasm/cell-body channel in arr.
     nucleus_channel_idx : int
@@ -113,9 +113,9 @@ def cellpose_segmentation(
     model = models.CellposeModel(gpu=use_gpu)
 
     # Stack to (H, W, 2): Cellpose v4 uses channel_axis instead of `channels`
-    # arr has shape (H, W, 1, Z) where channels are in the Z dimension
-    cyto = arr[:, :, 0, cyto_channel_idx]
-    nucleus = arr[:, :, 0, nucleus_channel_idx]
+    # squidpy squeezes the C=1 dim before calling, so arr arrives as (H, W, n_channels)
+    cyto = arr[:, :, cyto_channel_idx]
+    nucleus = arr[:, :, nucleus_channel_idx]
     img_2ch = np.stack([cyto, nucleus], axis=2)
 
     masks, flows, styles = model.eval(
