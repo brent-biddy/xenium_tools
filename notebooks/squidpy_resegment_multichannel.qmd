@@ -90,8 +90,8 @@ def cellpose_segmentation(
     Parameters
     ----------
     arr : np.ndarray
-        Input image array (H, W, C). All channels are passed via channel=None
-        in sq.im.segment so the full array is forwarded here.
+        Input image array (H, W, 1, Z). Passed via channel=None in sq.im.segment.
+        Channels are in the Z dimension due to how squidpy builds the ImageContainer.
     cyto_channel_idx : int
         Index of the cytoplasm/cell-body channel in arr.
     nucleus_channel_idx : int
@@ -113,8 +113,9 @@ def cellpose_segmentation(
     model = models.CellposeModel(gpu=use_gpu)
 
     # Stack to (H, W, 2): Cellpose v4 uses channel_axis instead of `channels`
-    cyto = arr[:, :, cyto_channel_idx]
-    nucleus = arr[:, :, nucleus_channel_idx]
+    # arr has shape (H, W, 1, Z) where channels are in the Z dimension
+    cyto = arr[:, :, 0, cyto_channel_idx]
+    nucleus = arr[:, :, 0, nucleus_channel_idx]
     img_2ch = np.stack([cyto, nucleus], axis=2)
 
     masks, flows, styles = model.eval(
@@ -237,11 +238,11 @@ plt.show()
 
 ```{python}
 # Diagnostic: print per-channel shape and intensity stats before segmentation.
-_cropped_arr = img["image"].data  # (H, W, C, 1) xarray DataArray
+_cropped_arr = img["image"].data  # (H, W, 1, Z) xarray DataArray — channels are in Z dim
 
 print(f"ImageContainer layer 'image' shape (H, W, C, Z): {tuple(_cropped_arr.shape)}")
 for _idx, _name in [(cyto_channel, cyto_channel_name), (nucleus_channel, nucleus_channel_name)]:
-    _ch = _cropped_arr[:, :, _idx, 0].values
+    _ch = _cropped_arr[:, :, 0, _idx].values
     print(
         f"  channel {_idx} ({_name}): shape={_ch.shape}, "
         f"min={_ch.min():.1f}, max={_ch.max():.1f}, "
