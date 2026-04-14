@@ -216,8 +216,8 @@ _cropped_img_da = sd.get_pyramid_levels(sdata_crop[image_key], n=0)
 print(f"_cropped_img_da type:  {type(_cropped_img_da)}")
 print(f"_cropped_img_da dims:  {_cropped_img_da.dims}")
 print(f"_cropped_img_da shape: {_cropped_img_da.shape}")
-# Rename 'c' → 'channels' so squidpy maps it to the C dimension (not Z)
-_cropped_img_da = _cropped_img_da.rename({'c': 'channels'})
+# Rename 'c' → 'channels' and add 'z' dim so squidpy gets the expected (channels, y, x, z) layout
+_cropped_img_da = _cropped_img_da.rename({'c': 'channels'}).expand_dims('z', axis=-1)
 img = sq.im.ImageContainer(_cropped_img_da, layer="image")
 
 _poly_xs = np.array(_cell_poly.exterior.coords)[:, 0] / _pixel_size_x
