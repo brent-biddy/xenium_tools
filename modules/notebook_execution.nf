@@ -154,6 +154,43 @@ process execute_squidpy_resegment {
     """
 }
 
+process execute_squidpy_resegment_multichannel {
+
+    tag "${sample_name}"
+    label 'squidpy'
+
+    time = { 15.m * (1 + task.attempt) }
+
+    input:
+    tuple val(sample_name), path(spatialdata_zarr)
+    path(notebook)
+    val(cell_id)
+
+    output:
+    tuple val(sample_name), path("squidpy_resegment_multichannel_report.html"), emit: html
+
+    publishDir "${params.output_path}/results/${sample_name}",
+        pattern: "squidpy_resegment_multichannel_report.html",
+        saveAs: { "${sample_name}_squidpy_resegment_multichannel_report.html" },
+        mode: 'copy'
+
+    script:
+    """
+    export XDG_CACHE_HOME="./.xdg_cache_home"
+    export XDG_DATA_HOME="./.xdg_data_home"
+    quarto render ${notebook} \
+        -P xenium_zarr:${spatialdata_zarr} \
+        -P cell_id:${cell_id} \
+        -P cyto_channel:${params.resegment_cyto_channel} \
+        -P nucleus_channel:${params.resegment_nucleus_channel} \
+        --output squidpy_resegment_multichannel_report.html
+    """
+    stub:
+    """
+    touch squidpy_resegment_multichannel_report.html
+    """
+}
+
 workflow NOTEBOOK_EXECUTION {
     take:
         seurat_rds_ch    // [sample_name, rds] - used for qc_plots and score_markers
@@ -198,5 +235,10 @@ workflow NOTEBOOK_EXECUTION {
         if (params.run_squidpy_resegment) {
             squidpy_resegment_nb = file("${projectDir}/notebooks/squidpy_resegment.qmd")
             execute_squidpy_resegment(spatialdata_ch, squidpy_resegment_nb, params.resegment_cell_id)
+        }
+
+        if (params.run_squidpy_resegment_multichannel) {
+            squidpy_resegment_mc_nb = file("${projectDir}/notebooks/squidpy_resegment_multichannel.qmd")
+            execute_squidpy_resegment_multichannel(spatialdata_ch, squidpy_resegment_mc_nb, params.resegment_cell_id)
         }
 }
