@@ -46,7 +46,7 @@ import spatialdata as sd
 import spatialdata_io
 import spatialdata_plot  # registers the .pl accessor on SpatialData
 from spatialdata.models import Labels2DModel
-from spatialdata.transformations import Identity
+from spatialdata.transformations import Identity, Translation
 
 import matplotlib.pyplot as plt
 
@@ -293,7 +293,7 @@ if _xenium_label_crop.shape != tuple(_cellpose_label_crop.shape):
 sdata_crop.labels["cellpose_labels"] = Labels2DModel.parse(
     np.array(_cellpose_label_crop),
     dims=("y", "x"),
-    transformations={"global": Identity()},
+    transformations={"global": Translation([x_min, y_min], axes=("x", "y"))},
 )
 
 fig, axes = plt.subplots(1, 2, figsize=(8, 4))
