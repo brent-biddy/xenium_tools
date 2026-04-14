@@ -240,11 +240,11 @@ plt.show()
 
 ```{python}
 # Diagnostic: print per-channel shape and intensity stats before segmentation.
-_cropped_arr = img["image"].data  # (H, W, C, 1) — channels correctly in C dim
+_cropped_arr = img["image"].data  # (H, W, Z, channels) — squidpy internal layout
 
-print(f"ImageContainer layer 'image' shape (H, W, C, Z): {tuple(_cropped_arr.shape)}")
+print(f"ImageContainer layer 'image' shape (H, W, Z, channels): {tuple(_cropped_arr.shape)}")
 for _idx, _name in [(cyto_channel, cyto_channel_name), (nucleus_channel, nucleus_channel_name)]:
-    _ch = _cropped_arr[:, :, _idx, 0].compute()
+    _ch = _cropped_arr[:, :, 0, _idx].compute()
     print(
         f"  channel {_idx} ({_name}): shape={_ch.shape}, "
         f"min={_ch.min():.1f}, max={_ch.max():.1f}, "
