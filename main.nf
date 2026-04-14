@@ -28,6 +28,10 @@ workflow {
         error "ERROR: score_markers is enabled but marker_yaml file not found: ${params.marker_yaml}"
     }
 
+    if ((params.run_squidpy_resegment || params.run_squidpy_resegment_multichannel) && !params.resegment_cell_id) {
+        error "ERROR: --resegment_cell_id is required when run_squidpy_resegment or run_squidpy_resegment_multichannel is enabled"
+    }
+
     Channel.fromPath(params.samplesheet)
         .splitCsv(header:true)
         .map{ row ->
