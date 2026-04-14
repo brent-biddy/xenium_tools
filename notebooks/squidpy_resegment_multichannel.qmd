@@ -197,7 +197,7 @@ if _missing:
 # Overview plot: whole tissue rendered by spatialdata-plot (auto-selects optimal pyramid level)
 # with crop bounding box highlighted in physical (global) coordinates.
 fig, ax = plt.subplots(figsize=(8, 8))
-sdata.pl.render_images(image_key, channel=cyto_channel_name).pl.show(ax=ax)
+sdata.pl.render_images(image_key, channel=cyto_channel_name).pl.show(ax=ax, legend_loc=None, colorbar=False)
 ax.add_patch(plt.Rectangle(
     (x_min, y_min), crop_size, crop_size,
     linewidth=1.5, edgecolor="red", facecolor="none"
@@ -212,6 +212,9 @@ plt.show()
 # Crop plot: cyto and nucleus channels side by side with cell boundary polygon overlay.
 # Build ImageContainer from the already-cropped image (needed for segmentation below).
 _cropped_img_da = sd.get_pyramid_levels(sdata_crop[image_key], n=0)
+print(f"_cropped_img_da type:  {type(_cropped_img_da)}")
+print(f"_cropped_img_da dims:  {_cropped_img_da.dims}")
+print(f"_cropped_img_da shape: {_cropped_img_da.shape}")
 img = sq.im.ImageContainer(_cropped_img_da, layer="image")
 
 _poly_xs = np.array(_cell_poly.exterior.coords)[:, 0] / _pixel_size_x
@@ -223,9 +226,8 @@ for _ax, _ch_name, _title in [
     (axes[0], cyto_channel_name,    f"Cyto — {cyto_channel_name}"),
     (axes[1], nucleus_channel_name, f"Nucleus — {nucleus_channel_name}"),
 ]:
-    sdata_crop.pl.render_images(image_key, channel=_ch_name).pl.show(ax=_ax)
+    sdata_crop.pl.render_images(image_key, channel=_ch_name).pl.show(ax=_ax, legend_loc=None, colorbar=False)
     _ax.plot(_poly_xs, _poly_ys, color="red", linewidth=1.5)
-    _ax.get_legend().remove()
     _ax.set_title(f"{_title}\ncell '{cell_id}'")
 
 plt.tight_layout()
