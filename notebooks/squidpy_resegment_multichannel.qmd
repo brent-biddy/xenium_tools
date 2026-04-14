@@ -275,7 +275,7 @@ sq.im.segment(
 
 ```{python}
 print(img)
-print(f"Number of segments in crop: {len(np.unique(img[segment_key]))}")
+print(f"Number of Cellpose segments in crop: {len(np.unique(img[segment_key]))}")
 
 _xenium_labels_ds = sdata_crop["cell_labels"]["scale0"].ds
 _xenium_labels_da = _xenium_labels_ds[list(_xenium_labels_ds.data_vars)[0]]
@@ -283,6 +283,7 @@ _xenium_label_crop = _xenium_labels_da.values
 
 _cellpose_label_crop = img[segment_key].data[:, :, 0, 0]
 
+print(f"Number of Xenium segments in crop:   {len(np.unique(_xenium_label_crop))}")
 print(f"Xenium label shape:   {_xenium_label_crop.shape}")
 print(f"Cellpose label shape: {tuple(_cellpose_label_crop.shape)}")
 if _xenium_label_crop.shape != tuple(_cellpose_label_crop.shape):
@@ -303,7 +304,7 @@ for _ax, _label_key, _title in [
     (axes[1], "cellpose_labels",  "Cellpose segmentation"),
 ]:
     sdata_crop.pl.render_images(image_key, channel=cyto_channel_name)\
-        .pl.render_labels(_label_key, fill_alpha=0.0, outline_alpha=1.0, color="white")\
+        .pl.render_labels(_label_key, contour_px=5, fill_alpha=0.0, outline_alpha=1.0, color="red")\
         .pl.show(ax=_ax, legend_loc=None, colorbar=False)
     _ax.set_title(_title)
 ```
