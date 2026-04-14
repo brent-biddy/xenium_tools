@@ -242,7 +242,7 @@ _cropped_arr = img["image"].data  # (H, W, 1, Z) xarray DataArray — channels a
 
 print(f"ImageContainer layer 'image' shape (H, W, C, Z): {tuple(_cropped_arr.shape)}")
 for _idx, _name in [(cyto_channel, cyto_channel_name), (nucleus_channel, nucleus_channel_name)]:
-    _ch = _cropped_arr[:, :, 0, _idx].values
+    _ch = _cropped_arr[:, :, 0, _idx].compute()
     print(
         f"  channel {_idx} ({_name}): shape={_ch.shape}, "
         f"min={_ch.min():.1f}, max={_ch.max():.1f}, "
