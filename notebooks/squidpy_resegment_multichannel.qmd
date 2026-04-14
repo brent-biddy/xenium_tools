@@ -46,6 +46,7 @@ import spatialdata as sd
 import spatialdata_io
 import spatialdata_plot  # registers the .pl accessor on SpatialData
 from spatialdata.models import Labels2DModel
+from spatialdata.transformations import Identity
 
 import matplotlib.pyplot as plt
 
@@ -287,22 +288,22 @@ print(f"Cellpose label shape: {tuple(_cellpose_label_crop.shape)}")
 if _xenium_label_crop.shape != tuple(_cellpose_label_crop.shape):
     print("WARNING: shape mismatch — boundary overlays may not align.")
 
-from skimage.segmentation import find_boundaries
+# Add Cellpose labels to sdata_crop so spatialdata-plot can render them
+# alongside the Xenium labels in the same physical coordinate space.
+sdata_crop.labels["cellpose_labels"] = Labels2DModel.parse(
+    np.array(_cellpose_label_crop),
+    dims=("y", "x"),
+    transformations={"global": Identity()},
+)
 
 fig, axes = plt.subplots(1, 2, figsize=(8, 4))
 
-for _ax, _labels, _title in [
-    (axes[0], _xenium_label_crop,   "Xenium segmentation"),
-    (axes[1], _cellpose_label_crop, "Cellpose segmentation"),
+for _ax, _label_key, _title in [
+    (axes[0], "cell_labels",      "Xenium segmentation"),
+    (axes[1], "cellpose_labels",  "Cellpose segmentation"),
 ]:
-    img.show("image", channel=cyto_channel, ax=_ax)
-    _bounds = find_boundaries(_labels, mode="outer")
-    _bounds_rgba = np.zeros((*_bounds.shape, 4), dtype=float)
-    _bounds_rgba[_bounds, 0] = 1.0  # R
-    _bounds_rgba[_bounds, 1] = 1.0  # G
-    _bounds_rgba[_bounds, 2] = 1.0  # B
-    _bounds_rgba[_bounds, 3] = 1.0  # alpha (opaque only at boundaries)
-    _ax.imshow(_bounds_rgba, origin="upper")
-    _ax.axis("off")
-    _ = _ax.set_title(_title)
+    sdata_crop.pl.render_images(image_key, channel=cyto_channel_name)\
+        .pl.render_labels(_label_key)\
+        .pl.show(ax=_ax, legend_loc=None, colorbar=False)
+    _ax.set_title(_title)
 ```
