@@ -216,6 +216,8 @@ _cropped_img_da = sd.get_pyramid_levels(sdata_crop[image_key], n=0)
 print(f"_cropped_img_da type:  {type(_cropped_img_da)}")
 print(f"_cropped_img_da dims:  {_cropped_img_da.dims}")
 print(f"_cropped_img_da shape: {_cropped_img_da.shape}")
+# Rename 'c' → 'channels' so squidpy maps it to the C dimension (not Z)
+_cropped_img_da = _cropped_img_da.rename({'c': 'channels'})
 img = sq.im.ImageContainer(_cropped_img_da, layer="image")
 
 _poly_xs = np.array(_cell_poly.exterior.coords)[:, 0] / _pixel_size_x
@@ -238,11 +240,11 @@ plt.show()
 
 ```{python}
 # Diagnostic: print per-channel shape and intensity stats before segmentation.
-_cropped_arr = img["image"].data  # (H, W, 1, Z) xarray DataArray — channels are in Z dim
+_cropped_arr = img["image"].data  # (H, W, C, 1) — channels correctly in C dim
 
 print(f"ImageContainer layer 'image' shape (H, W, C, Z): {tuple(_cropped_arr.shape)}")
 for _idx, _name in [(cyto_channel, cyto_channel_name), (nucleus_channel, nucleus_channel_name)]:
-    _ch = _cropped_arr[:, :, 0, _idx].compute()
+    _ch = _cropped_arr[:, :, _idx, 0].compute()
     print(
         f"  channel {_idx} ({_name}): shape={_ch.shape}, "
         f"min={_ch.min():.1f}, max={_ch.max():.1f}, "
@@ -293,7 +295,7 @@ for _ax, _labels, _title in [
     (axes[0], _xenium_label_crop,   "Xenium segmentation"),
     (axes[1], _cellpose_label_crop, "Cellpose segmentation"),
 ]:
-    img.show("image", channel=cyto_channel, ax=_ax)
+    sdata_crop.pl.render_images(image_key, channel=cyto_channel_name).pl.show(ax=_ax, legend_loc=None, colorbar=False)
     _bounds = find_boundaries(_labels, mode="outer")
     _bounds_rgba = np.zeros((*_bounds.shape, 4), dtype=float)
     _bounds_rgba[_bounds, 0] = 1.0  # R
