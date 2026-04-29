@@ -1,5 +1,5 @@
 ---
-title: "Cellpose Segmentation — Three-Config Comparison"
+title: "Cellpose Segmentation — Multi-Config Comparison"
 author: ""
 date: today
 format:
@@ -29,6 +29,8 @@ cyto_channel = 1                          # Channel index for cytoplasm/cell bod
 cyto_channel_name = "ATP1A1/CD45/E-Cadherin"
 nucleus_channel = 0                       # Channel index for nucleus (e.g., DAPI)
 nucleus_channel_name = "DAPI"
+interior_channel = 2                      # Channel index for interior stain (e.g., 18S rRNA)
+interior_channel_name = "18S"             # Update if your channel has a different name
 crop_size = 600                           # Side length of the square crop in pixels
 pixel_size = 0.2125                       # µm/px at pyramid level 0
 
@@ -37,7 +39,7 @@ flow_threshold = 0.4
 cellprob_threshold = 0.0
 use_gpu = False
 
-# Stage → expected oocyte diameter (µm). Used by configs B and C.
+# Stage → expected oocyte diameter (µm). Used by all staged configs.
 DIAMETER_BY_STAGE_UM = {
     "primordial": 28,
     "primary":    45,
@@ -51,7 +53,7 @@ import numpy as np
 
 import spatialdata as sd
 import spatialdata_io
-import spatialdata_plot  # registers the .pl accessor on SpatialData
+import spatialdata_plot
 from spatialdata.models import Labels2DModel
 from spatialdata.transformations import Translation
 
@@ -78,7 +80,7 @@ print(f"Image '{image_key}' shape (c, h, w): {tuple(_img_da.shape)}, dtype: {_im
 ```
 
 ```{python}
-# Resolve diameter from stage (used in configs B and C; ignored in A).
+# Resolve diameter from stage
 if stage not in DIAMETER_BY_STAGE_UM:
     raise ValueError(
         f"stage='{stage}' not recognized. Expected one of {list(DIAMETER_BY_STAGE_UM)}."
@@ -89,7 +91,42 @@ print(f"Stage '{stage}' → expected diameter: {diameter_um} µm = {diameter_px:
 ```
 
 ```{python}
-def cellpose_two_channel(
+def run_cellpose(
+    arr: np.ndarray,
+    channel_idx: int,
+    diameter: float = None,
+    flow_threshold: float = 0.4,
+    cellprob_threshold: float = 0.0,
+    use_gpu: bool = False,
+    invert: bool = False,
+) -> np.ndarray:
+    """
+    Run Cellpose v4+ on a single channel, with optional inversion.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input image (H, W, n_channels). Channels in last axis (squidpy layout).
+    channel_idx : int
+        Channel to use.
+    invert : bool
+        If True, invert the channel before segmentation. Use for DAPI where
+        the oocyte appears as a dark void in a bright field.
+    """
+    model = models.CellposeModel(gpu=use_gpu)
+    ch = arr[:, :, channel_idx].astype(np.float32)
+    if invert:
+        ch = ch.max() - ch
+    masks, _, _ = model.eval(
+        ch,
+        diameter=diameter,
+        flow_threshold=flow_threshold,
+        cellprob_threshold=cellprob_threshold,
+    )
+    return masks
+
+
+def run_cellpose_two_channel(
     arr: np.ndarray,
     cyto_channel_idx: int,
     nucleus_channel_idx: int,
@@ -100,12 +137,6 @@ def cellpose_two_channel(
 ) -> np.ndarray:
     """
     Run Cellpose v4+ on a (cyto, nucleus) two-channel input.
-
-    Parameters
-    ----------
-    arr : np.ndarray
-        Input image, (H, W, n_channels). Squidpy squeezes its C=1 dim before
-        calling, so channels arrive in the last axis.
     """
     model = models.CellposeModel(gpu=use_gpu)
     cyto = arr[:, :, cyto_channel_idx]
@@ -119,36 +150,12 @@ def cellpose_two_channel(
         cellprob_threshold=cellprob_threshold,
     )
     return masks
-
-
-def cellpose_one_channel(
-    arr: np.ndarray,
-    nucleus_channel_idx: int,
-    diameter: float = None,
-    flow_threshold: float = 0.4,
-    cellprob_threshold: float = 0.0,
-    use_gpu: bool = False,
-) -> np.ndarray:
-    """
-    Run Cellpose v4+ on a single-channel (nucleus only) input.
-    """
-    model = models.CellposeModel(gpu=use_gpu)
-    nucleus = arr[:, :, nucleus_channel_idx]
-    masks, _, _ = model.eval(
-        nucleus,
-        diameter=diameter,
-        flow_threshold=flow_threshold,
-        cellprob_threshold=cellprob_threshold,
-    )
-    return masks
 ```
 
 ```{python}
-# Look up the centroid of the target cell from its boundary polygon
+# Look up centroid and build crop
 _cell_poly = sdata[cell_boundary_key].loc[cell_id].geometry
 cx_phys, cy_phys = _cell_poly.centroid.x, _cell_poly.centroid.y
-print(f"Cell '{cell_id}' centroid (physical): x={cx_phys:.2f} µm, y={cy_phys:.2f} µm")
-
 cx_px = cx_phys / pixel_size
 cy_px = cy_phys / pixel_size
 x_min = cx_px - crop_size / 2
@@ -159,6 +166,8 @@ y_max = cy_px + crop_size / 2
 image_ds = sdata.images[image_key]["scale0"].ds
 image_da = image_ds[list(image_ds.data_vars)[0]]
 img_h, img_w = image_da.shape[1], image_da.shape[2]
+
+print(f"Cell '{cell_id}' centroid (physical): x={cx_phys:.2f} µm, y={cy_phys:.2f} µm")
 print(f"Crop bounding box (pixel): x=[{x_min:.1f}, {x_max:.1f}], y=[{y_min:.1f}, {y_max:.1f}]")
 if x_min < 0 or y_min < 0 or x_max > img_w or y_max > img_h:
     print(f"WARNING: crop extends outside image bounds ({img_w} × {img_h} px)")
@@ -189,7 +198,7 @@ plt.show()
 ```
 
 ```{python}
-# Crop plot: cyto and nucleus channels side by side with original cell boundary overlay
+# Build ImageContainer from cropped image
 _cropped_img_da = sd.get_pyramid_levels(sdata_crop[image_key], n=0)
 _cropped_img_da = _cropped_img_da.rename({'c': 'channels'}).expand_dims('z', axis=-1)
 img = sq.im.ImageContainer(_cropped_img_da, layer="image")
@@ -197,10 +206,12 @@ img = sq.im.ImageContainer(_cropped_img_da, layer="image")
 _poly_xs = np.array(_cell_poly.exterior.coords)[:, 0] / pixel_size
 _poly_ys = np.array(_cell_poly.exterior.coords)[:, 1] / pixel_size
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+# Three-channel crop view: cyto, nucleus, interior
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 for _ax, _ch_name, _title in [
-    (axes[0], cyto_channel_name,    f"Cyto — {cyto_channel_name}"),
-    (axes[1], nucleus_channel_name, f"Nucleus — {nucleus_channel_name}"),
+    (axes[0], cyto_channel_name,     f"Cyto — {cyto_channel_name}"),
+    (axes[1], nucleus_channel_name,  f"Nucleus — {nucleus_channel_name}"),
+    (axes[2], interior_channel_name, f"Interior — {interior_channel_name}"),
 ]:
     sdata_crop.pl.render_images(image_key, channel=_ch_name).pl.show(
         ax=_ax, legend_loc=None, colorbar=False
@@ -212,70 +223,94 @@ plt.show()
 ```
 
 ```{python}
-# Per-channel intensity diagnostic
+# Per-channel intensity diagnostic — all channels
 _cropped_arr = img["image"].data
 print(f"ImageContainer layer 'image' shape (H, W, Z, channels): {tuple(_cropped_arr.shape)}")
-for _idx, _name in [(cyto_channel, cyto_channel_name), (nucleus_channel, nucleus_channel_name)]:
+for _idx in range(_cropped_arr.shape[-1]):
     _ch = _cropped_arr[:, :, 0, _idx].compute()
     print(
-        f"  channel {_idx} ({_name}): shape={_ch.shape}, "
-        f"min={_ch.min():.1f}, max={_ch.max():.1f}, "
-        f"p99={np.percentile(_ch, 99):.1f}"
+        f"  channel {_idx}: min={_ch.min():.1f}, max={_ch.max():.1f}, "
+        f"mean={_ch.mean():.1f}, p99={np.percentile(_ch, 99):.1f}"
     )
 ```
 
 ```{python}
-# Run all three configurations.
+# Run all five configurations
+_shared = dict(
+    flow_threshold=flow_threshold,
+    cellprob_threshold=cellprob_threshold,
+    use_gpu=use_gpu,
+)
 
-# Config A: cyto + nucleus, auto-diameter
+# Config A: cyto+nucleus, auto-diameter (baseline)
 sq.im.segment(
     img, layer="image", channel=None,
-    method=cellpose_two_channel,
+    method=run_cellpose_two_channel,
     layer_added="seg_A_cyto_auto",
     cyto_channel_idx=cyto_channel,
     nucleus_channel_idx=nucleus_channel,
     diameter=None,
-    flow_threshold=flow_threshold,
-    cellprob_threshold=cellprob_threshold,
-    use_gpu=use_gpu,
+    **_shared,
 )
 print("Config A done (cyto+nucleus, diameter=auto)")
 
-# Config B: cyto + nucleus, stage-appropriate diameter
+# Config B: cyto+nucleus, staged diameter
 sq.im.segment(
     img, layer="image", channel=None,
-    method=cellpose_two_channel,
+    method=run_cellpose_two_channel,
     layer_added="seg_B_cyto_staged",
     cyto_channel_idx=cyto_channel,
     nucleus_channel_idx=nucleus_channel,
     diameter=diameter_px,
-    flow_threshold=flow_threshold,
-    cellprob_threshold=cellprob_threshold,
-    use_gpu=use_gpu,
+    **_shared,
 )
 print(f"Config B done (cyto+nucleus, diameter={diameter_px:.0f} px)")
 
-# Config C: nucleus only, stage-appropriate diameter
+# Config C: DAPI only, staged diameter
 sq.im.segment(
     img, layer="image", channel=None,
-    method=cellpose_one_channel,
+    method=run_cellpose,
     layer_added="seg_C_nuc_staged",
-    nucleus_channel_idx=nucleus_channel,
+    channel_idx=nucleus_channel,
     diameter=diameter_px,
-    flow_threshold=flow_threshold,
-    cellprob_threshold=cellprob_threshold,
-    use_gpu=use_gpu,
+    invert=False,
+    **_shared,
 )
-print(f"Config C done (nucleus-only, diameter={diameter_px:.0f} px)")
+print(f"Config C done (DAPI, diameter={diameter_px:.0f} px)")
+
+# Config D: inverted DAPI, staged diameter
+sq.im.segment(
+    img, layer="image", channel=None,
+    method=run_cellpose,
+    layer_added="seg_D_inv_dapi",
+    channel_idx=nucleus_channel,
+    diameter=diameter_px,
+    invert=True,
+    **_shared,
+)
+print(f"Config D done (inverted DAPI, diameter={diameter_px:.0f} px)")
+
+# Config E: 18S interior channel, staged diameter
+sq.im.segment(
+    img, layer="image", channel=None,
+    method=run_cellpose,
+    layer_added="seg_E_18S",
+    channel_idx=interior_channel,
+    diameter=diameter_px,
+    invert=False,
+    **_shared,
+)
+print(f"Config E done (18S, diameter={diameter_px:.0f} px)")
 ```
 
 ```{python}
-# Register all three Cellpose label arrays to sdata_crop in the global frame
-# so spatialdata-plot can render them alongside the image.
+# Register all label arrays in global frame
 configs = [
     ("seg_A_cyto_auto",   "A: cyto+nuc, auto"),
-    ("seg_B_cyto_staged", f"B: cyto+nuc, d={diameter_px:.0f} px"),
-    ("seg_C_nuc_staged",  f"C: nuc only, d={diameter_px:.0f} px"),
+    ("seg_B_cyto_staged", f"B: cyto+nuc, d={diameter_px:.0f}"),
+    ("seg_C_nuc_staged",  f"C: DAPI, d={diameter_px:.0f}"),
+    ("seg_D_inv_dapi",    f"D: inv-DAPI, d={diameter_px:.0f}"),
+    ("seg_E_18S",         f"E: 18S, d={diameter_px:.0f}"),
 ]
 for _key, _ in configs:
     _labels = img[_key].data[:, :, 0, 0]
@@ -284,40 +319,28 @@ for _key, _ in configs:
         dims=("y", "x"),
         transformations={"global": Translation([x_min, y_min], axes=("x", "y"))},
     )
-    print(f"  {_key}: {len(np.unique(_labels))} unique labels")
+    print(f"  {_key}: {len(np.unique(_labels))-1} cells")
 ```
 
 ```{python}
-# Side-by-side comparison: original Xenium + the three Cellpose configs.
-fig, axes = plt.subplots(1, 4, figsize=(20, 5))
-
+# Comparison plots over each channel background
 panels = [("cell_labels", "Xenium (original)")] + configs
 
-for _ax, (_label_key, _title) in zip(axes, panels):
-    sdata_crop.pl.render_images(image_key, channel=cyto_channel_name)\
-        .pl.render_labels(_label_key, contour_px=3, fill_alpha=0.0,
-                          outline_alpha=1.0, color="red")\
-        .pl.show(ax=_ax, legend_loc=None, colorbar=False)
-    _ax.set_title(_title)
-
-plt.suptitle(f"cell_id='{cell_id}', stage='{stage}'", y=1.02)
-plt.tight_layout()
-plt.show()
-```
-
-```{python}
-# Same comparison rendered over the nucleus channel — sometimes easier
-# to judge whether the oocyte boundary is being captured.
-fig, axes = plt.subplots(1, 4, figsize=(20, 5))
-
-for _ax, (_label_key, _title) in zip(axes, panels):
-    sdata_crop.pl.render_images(image_key, channel=nucleus_channel_name)\
-        .pl.render_labels(_label_key, contour_px=3, fill_alpha=0.0,
-                          outline_alpha=1.0, color="red")\
-        .pl.show(ax=_ax, legend_loc=None, colorbar=False)
-    _ax.set_title(_title)
-
-plt.suptitle(f"Over {nucleus_channel_name} — cell_id='{cell_id}', stage='{stage}'", y=1.02)
-plt.tight_layout()
-plt.show()
+for _bg_ch, _bg_title in [
+    (cyto_channel_name,     cyto_channel_name),
+    (nucleus_channel_name,  nucleus_channel_name),
+    (interior_channel_name, interior_channel_name),
+]:
+    fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 5))
+    for _ax, (_label_key, _title) in zip(axes, panels):
+        sdata_crop.pl.render_images(image_key, channel=_bg_ch)\
+            .pl.render_labels(_label_key, contour_px=3, fill_alpha=0.0,
+                              outline_alpha=1.0, color="red")\
+            .pl.show(ax=_ax, legend_loc=None, colorbar=False)
+        _ax.set_title(_title)
+    plt.suptitle(
+        f"Over {_bg_title} — cell_id='{cell_id}', stage='{stage}'", y=1.02
+    )
+    plt.tight_layout()
+    plt.show()
 ```
