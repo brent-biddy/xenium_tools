@@ -181,6 +181,7 @@ process execute_squidpy_resegment_multichannel {
     quarto render ${notebook} \
         -P xenium_zarr:${spatialdata_zarr} \
         -P cell_id:${cell_id} \
+        -P stage:${params.resegment_stage} \
         -P cyto_channel:${params.resegment_cyto_channel} \
         -P nucleus_channel:${params.resegment_nucleus_channel} \
         --output squidpy_resegment_multichannel_report.html

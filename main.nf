@@ -32,6 +32,10 @@ workflow {
         error "ERROR: --resegment_cell_id is required when run_squidpy_resegment or run_squidpy_resegment_multichannel is enabled"
     }
 
+    if (params.run_squidpy_resegment_multichannel && !params.resegment_stage) {
+        error "ERROR: --resegment_stage is required when run_squidpy_resegment_multichannel is enabled (one of: primordial, primary, secondary, antral)"
+    }
+
     Channel.fromPath(params.samplesheet)
         .splitCsv(header:true)
         .map{ row ->
